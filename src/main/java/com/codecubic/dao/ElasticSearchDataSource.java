@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
 import com.codecubic.exception.ESInitException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.entity.ContentType;
 
@@ -12,29 +13,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 支持sql查询，所有sql查询方法均为非稳定版本
+ *
+ * @author code-cubic
+ */
 @Slf4j
 public class ElasticSearchDataSource extends BaseElasticSearchDataSource {
 
+    private HttpClientHandler _sqlHandler;
 
     public ElasticSearchDataSource(ESConfig config) throws ESInitException {
         super(config);
+        String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
+        String[] split = StringUtils.split(hosts[0], ":");
+        String url = String.format("http://%s:%s/_xpack/sql?format=json", split[0], split[1]);
+        RequestConfig conf = RequestConfig.custom()
+                .setSocketTimeout(this._esConf.getSocketTimeoutMillis())
+                .setConnectTimeout(this._esConf.getConnectTimeoutMillis()).build();
+        _sqlHandler = new HttpClientHandler(url, conf);
     }
 
     public List<Map<String, Object>> query(String sql) {
-        String esRootHost = "";
-        StringBuffer sb = new StringBuffer();
-        String esRestUri = sb.append("http://").append(esRootHost).append("/_xpack/sql?format=json").toString();
-        JSONObject post_data = new JSONObject();
-        post_data.put("query", sql);
-        HttpClientHandler hander = new HttpClientHandler();
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setSocketTimeout(this._esConf.getSocketTimeoutMillis())
-                .setConnectTimeout(this._esConf.getConnectTimeoutMillis()).build();
-        HttpClientHandler.HandlerResponse response = null;
+        JSONObject json = new JSONObject();
+        json.put("query", sql);
 
         List<Map<String, Object>> result = new ArrayList<>();
         try {
-            response = hander.httpPostDemo(esRestUri, post_data.toString(), requestConfig, ContentType.APPLICATION_JSON, null);
+            HttpClientHandler.HandlerResponse response = _sqlHandler.httpPostDemo(json.toString(), ContentType.APPLICATION_JSON, null);
 
             JSONObject responseJson = JSONObject.parseObject(response.getContent());
             JSONArray columns = responseJson.getJSONArray("columns");
@@ -55,11 +61,10 @@ public class ElasticSearchDataSource extends BaseElasticSearchDataSource {
                         continue;
                     }
                 }
-                return result;
             }
         } catch (Exception e) {
             log.error("", e);
         }
-        return new ArrayList<>(0);
+        return result;
     }
 }

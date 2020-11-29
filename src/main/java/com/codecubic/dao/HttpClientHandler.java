@@ -1,6 +1,5 @@
 package com.codecubic.dao;
 
-import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
@@ -33,10 +32,11 @@ import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.NoSuchAlgorithmException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Properties;
 
+/**
+ * @author code-cubic
+ */
 @Slf4j
 public class HttpClientHandler {
     /**
@@ -104,9 +104,6 @@ public class HttpClientHandler {
             } catch (IOException e) {
             }
         }
-    }
-
-    static {
         try {
             log.info("初始化HttpClient~~~开始");
             LayeredConnectionSocketFactory sslsf;
@@ -124,6 +121,15 @@ public class HttpClientHandler {
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
+    }
+
+
+    private String _url;
+    private RequestConfig _conf;
+
+    public HttpClientHandler(String url, RequestConfig conf) {
+        this._url = url;
+        this._conf = conf;
     }
 
     /**
@@ -277,17 +283,15 @@ public class HttpClientHandler {
     /**
      * application/json  UTF-8  发送post请求
      *
-     * @param uri
      * @param postData
-     * @param requestConfig 不用单独设置超时传null
      * @param contentType
-     * @param heads         没有则不传，  @return
+     * @param heads       没有则不传，  @return
      */
-    public HandlerResponse httpPostDemo(String uri, String postData, RequestConfig requestConfig, ContentType contentType, Header... heads) {
+    public HandlerResponse httpPostDemo(String postData, ContentType contentType, Header... heads) {
         String errorMessage = "";
         ResultStatus status;
         String result = null;
-        HttpPost httpPost = new HttpPost(uri);
+        HttpPost httpPost = new HttpPost(_url);
         CloseableHttpResponse response = null;
         try {
             StringEntity paramEntity = new StringEntity(postData, "UTF-8");
@@ -296,10 +300,8 @@ public class HttpClientHandler {
             paramEntity.setContentType(contentType.toString());
             httpPost.setEntity(paramEntity);
             //设置每次请求的超时时间
-            if (requestConfig != null) {
-                //设置超时时间
-                httpPost.setConfig(requestConfig);
-            }
+            //设置超时时间
+            httpPost.setConfig(_conf);
             //设置header
             if (heads != null) {
                 httpPost.setHeaders(heads);
@@ -311,7 +313,7 @@ public class HttpClientHandler {
                 result = EntityUtils.toString(entity);
                 status = ResultStatus.success;
             } else {
-                log.error("请求{}返回错误码:{},请求参数:{}", uri, code, postData);
+                log.error("请求{}返回错误码:{},请求参数:{}", _url, code, postData);
                 errorMessage = remoteRequestError + "-" + "状态码" + code;
                 status = ResultStatus.remote_response_error;
             }
@@ -319,12 +321,12 @@ public class HttpClientHandler {
         } catch (ConnectTimeoutException e) {
             log.error("httpclient请求超时异常", e);
             status = ResultStatus.connect_timeout;
-            errorMessage = e.getMessage() + " RestfulHandler处理遇到异常远程服务连接超时（客户端）， 超时阈值：" + requestConfig.getConnectionRequestTimeout() + "ms";
+            errorMessage = e.getMessage() + " RestfulHandler处理遇到异常远程服务连接超时（客户端）， 超时阈值：" + _conf.getConnectionRequestTimeout() + "ms";
 
         } catch (SocketTimeoutException e) {
             log.error("httpclient请求超时异常", e);
             status = ResultStatus.read_timeout;
-            errorMessage = e.getMessage() + " RestfulHandler处理遇到异常远程服务响应超时（客户端）， 超时阈值：" + requestConfig.getSocketTimeout() + "ms";
+            errorMessage = e.getMessage() + " RestfulHandler处理遇到异常远程服务响应超时（客户端）， 超时阈值：" + _conf.getSocketTimeout() + "ms";
         } catch (IOException e) {
             log.error("httpclient远程访问IO异常:", e);
             status = ResultStatus.request_common_io_exception;
@@ -350,40 +352,4 @@ public class HttpClientHandler {
         HandlerResponse handlerResponse = new HandlerResponse(result, status, errorMessage);
         return handlerResponse;
     }
-
-    /**
-     * 生成每次请求的超时配置
-     *
-     * @param readTimeout(ms)    读取数据超时时间
-     * @param connectTimeout(ms) 建立链接超时时间
-     * @return
-     */
-    private static RequestConfig createRequestTimeoutConfig(int readTimeout, int connectTimeout) {
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setSocketTimeout(readTimeout)
-                .setConnectTimeout(connectTimeout).build();
-        return requestConfig;
-    }
-
-    public static void main(String[] args) {
-        RequestConfig config = createRequestTimeoutConfig(4000, 500);
-        String url = "http://www.baidu.com";
-        HttpClientHandler hander = new HttpClientHandler();
-        HandlerResponse re = hander.httpGetDemo(url, config, null);
-        System.out.println(re);
-        String uri = "http://localhost:8181/ods/user/timeout";
-        Map map = new HashMap<String, Object>();
-        map.put("name", "zhangjinduo");
-        re = hander.httpPostDemo(uri, JSONObject.toJSONString(map), config, ContentType.APPLICATION_JSON);
-        System.out.println(re);
-
-        map = new HashMap<String, Object>();
-        String sql = "select * from yanbo_test";
-        uri = "http://10.4.86.12:9200/_xpack/sql?format=json";
-        map.put("query", sql);
-        re = hander.httpPostDemo(uri, JSONObject.toJSONString(map), config, ContentType.APPLICATION_JSON);
-        System.out.println(re);
-    }
-
-
 }
