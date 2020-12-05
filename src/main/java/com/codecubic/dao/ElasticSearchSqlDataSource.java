@@ -19,12 +19,12 @@ import java.util.Map;
  * @author code-cubic
  */
 @Slf4j
-public class ElasticSearchDataSource extends BaseElasticSearchDataSource {
+public class ElasticSearchSqlDataSource extends BaseElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
 
-    public ElasticSearchDataSource(ESConfig config) throws ESInitException {
-        super(config);
+    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException {
+        this._esConf = config;
         String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");
         String url = String.format("http://%s:%s/_xpack/sql?format=json", split[0], split[1]);

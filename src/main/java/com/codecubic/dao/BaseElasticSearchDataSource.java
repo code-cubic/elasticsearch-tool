@@ -2,11 +2,12 @@ package com.codecubic.dao;
 
 import com.codecubic.common.*;
 import com.codecubic.exception.ESInitException;
+import com.codecubic.util.TimeUtil;
+import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
 import org.apache.http.impl.nio.reactor.IOReactorConfig;
-import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
@@ -18,14 +19,11 @@ import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
 import org.elasticsearch.action.admin.indices.mapping.put.PutMappingRequest;
-import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.elasticsearch.action.bulk.*;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
-import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.action.update.UpdateRequest;
@@ -39,32 +37,34 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.rest.RestStatus;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.metrics.cardinality.CardinalityAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
 
+import java.io.Closeable;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+
 /**
  * @author code-cubic
  */
 @Slf4j
-public class BaseElasticSearchDataSource {
+public class BaseElasticSearchDataSource implements ElasticSearchService, Closeable {
 
     protected ESConfig _esConf;
     protected RestHighLevelClient _client;
     /**
-     * todo:使用单例processors时可能，存在意想不到的问题
+     * todo:使用单例processors时可能，存在意想不到的问题，需要考虑连接失败时的重新构建
      */
-    protected BulkProcessor processor;
+    protected BulkProcessor _bulkProcessor;
+
+    public BaseElasticSearchDataSource() {
+
+    }
 
     public BaseElasticSearchDataSource(ESConfig config) throws ESInitException {
         this._esConf = config;
@@ -108,172 +108,290 @@ public class BaseElasticSearchDataSource {
         }
     }
 
+    /**
+     * 新增索引
+     *
+     * @param indexName 索引名称
+     * @param source    索引定义
+     */
+    public boolean createIndex(String indexName, String source) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(source, "source can not be null");
 
-    public Tuple<Long, Map<String, Object>> getDoc(String indexName, String id, String[] fields) {
-        return getDoc(indexName, null, id, fields);
+        CreateIndexRequest request = new CreateIndexRequest(indexName);
+        request.source(source, XContentType.JSON);
+/*
+        request.timeout(TimeValue.timeValueMinutes(2));
+        request.timeout("2m");
+*/
+        try {
+            _client.indices().create(request, RequestOptions.DEFAULT);
+            return true;
+        } catch (IOException e) {
+            log.error("create index error:", e);
+        }
+        return false;
     }
 
-    public Tuple<Long, Map<String, Object>> getDoc(String indexName, String typeName, String id, String[] fields) {
+    /**
+     * 删除索引
+     *
+     * @param indexName 索引名称
+     * @return
+     */
+    public boolean deleIndex(String indexName) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
-            GetRequest getRequest = new GetRequest(indexName);
-            if (typeName != null && !typeName.isEmpty()) {
-                getRequest.type(typeName);
-            }
-            getRequest.id(id);
-
-            FetchSourceContext sourceContext = new FetchSourceContext(true, fields, null);
-            getRequest.fetchSourceContext(sourceContext);
-            GetResponse response = this._client.get(getRequest, RequestOptions.DEFAULT);
-            Map<String, Object> source = response.getSource();
-            Tuple<Long, Map<String, Object>> versionDataMap = new Tuple<>(response.getVersion(), source);
-            return versionDataMap;
-        } catch (IOException e) {
+            DeleteIndexRequest request = new DeleteIndexRequest(indexName);
+            AcknowledgedResponse response = _client.indices().delete(request, RequestOptions.DEFAULT);
+            return response.isAcknowledged();
+        } catch (Exception e) {
             log.error("", e);
-            return null;
         }
+        return false;
     }
 
 
-    public List<Map<String, Object>> searchDocs(String[] indice, Map<String, Object> conditions, String[] fields, int size) {
-        RestHighLevelClient client;
-        List<Map<String, Object>> rel = new ArrayList<>();
-        try {
-            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-            if (conditions != null) {
-                for (String key : conditions.keySet()) {
-                    sourceBuilder.query(QueryBuilders.matchQuery(key, conditions.get(key)));
-                }
-            }
-            if (size > 0) {
-                sourceBuilder.size(size);
-            }
-            sourceBuilder.fetchSource(fields, null);
-
-            SearchRequest request = new SearchRequest(indice, sourceBuilder);
-
-            SearchResponse response = this._client.search(request, RequestOptions.DEFAULT);
-            SearchHits hits = response.getHits();
-            SearchHit[] searchHits = hits.getHits();
-            for (SearchHit hit : searchHits) {
-                // do something with the SearchHit
-                rel.add(hit.getSourceAsMap());
-            }
-            return rel;
-        } catch (IOException e) {
-            log.error("", e);
-            return null;
-        }
-    }
-
-    public ResultCode insertDoc(String indexName, Long version, String id, String doc) {
-        return insertDoc(indexName, "_doc", version, id, doc);
-    }
-
-    public ResultCode insertDoc(String indexName, String typeName, Long version, String id, String doc) {
-        try {
-            if (version == null || version < 0) {
-                IndexRequest indexRequest = new IndexRequest();
-                indexRequest.index(indexName);
-                indexRequest.type(typeName);
-                indexRequest.id(id);
-                indexRequest.source(doc, XContentType.JSON);
-                _client.index(indexRequest, RequestOptions.DEFAULT);
-            } else {
-                UpdateRequest updateRequest = new UpdateRequest();
-                updateRequest.index(indexName);
-                updateRequest.type(typeName);
-                updateRequest.id(id);
-                updateRequest.doc(doc, XContentType.JSON);
-                updateRequest.version(version);
-                _client.update(updateRequest, RequestOptions.DEFAULT);
-            }
-        } catch (ElasticsearchStatusException e) {
-            RestStatus status = e.status();
-            if ("CONFLICT".equals(status.name()) || 409 == status.getStatus()) {
-                String detailedMessage = e.getDetailedMessage();
-                if (detailedMessage.contains("version_conflict")) {
-                    return ResultCode.VERSION_CONFLICT;
-                }
-            }
-        } catch (IOException e) {
-            if (log.isDebugEnabled()) {
-                log.debug("insertDoc method encounter error", e);
-            }
-            return ResultCode.IOEXCEPTION;
-        }
-        return ResultCode.SUCCESS;
-    }
-
+    /**
+     * 判断索引是否已经存在
+     *
+     * @param indexName 索引名称
+     * @return
+     */
     public boolean existIndex(String indexName) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
             GetIndexRequest request = new GetIndexRequest();
             request.indicesOptions(IndicesOptions.STRICT_EXPAND_OPEN);
             request.indices(indexName);
-            boolean exists = _client.indices().exists(request, RequestOptions.DEFAULT);
-            return exists;
+            return _client.indices().exists(request, RequestOptions.DEFAULT);
         } catch (IOException e) {
-            return existIndex(indexName);
+            log.error("", e);
         }
+        return false;
     }
 
-    public boolean existIndexAlias(String indexName, String alias) {
+    /**
+     * 判断指定别名是否归属指定索引
+     *
+     * @param indexName
+     * @param indexAlias
+     * @return
+     */
+    public boolean existIndexAlias(String indexName, String indexAlias) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
         try {
             GetAliasesRequest request = new GetAliasesRequest();
-            request.indices(indexName).aliases(alias);
+            request.indices(indexName).aliases(indexAlias);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
-            boolean exists = _client.indices().existsAlias(request, RequestOptions.DEFAULT);
-            return exists;
-
+            return _client.indices().existsAlias(request, RequestOptions.DEFAULT);
         } catch (IOException e) {
-            return existIndexAlias(indexName, alias);
+            log.error("", e);
         }
+        return false;
     }
 
-    public Set<String> getIndex(String alias) {
+    /**
+     * 获取指定索引的所有别名
+     *
+     * @param indexName
+     * @return
+     */
+    public Set<String> getIndexAlias(String indexName) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Set<String> alias = new HashSet<>(10);
+        try {
+            GetAliasesRequest request = new GetAliasesRequest();
+            request.indices(indexName);
+            request.indicesOptions(IndicesOptions.lenientExpandOpen());
+            GetAliasesResponse response = _client.indices().getAlias(request, RequestOptions.DEFAULT);
+            Map<String, Set<AliasMetaData>> aliases = response.getAliases();
+            if (aliases != null) {
+                for (Map.Entry<String, Set<AliasMetaData>> entry : aliases.entrySet()) {
+                    Set<AliasMetaData> value = entry.getValue();
+                    if (value != null) {
+                        for (AliasMetaData amd : value) {
+                            alias.add(amd.getAlias());
+                        }
+
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("", e);
+        }
+        return alias;
+    }
+
+
+    /**
+     * 更新索引别名
+     *
+     * @param indexName 索引别名
+     * @param newAlias  新增别名
+     * @param delAlias  删除别名
+     * @return
+     */
+    public boolean updatIndexAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        IndicesAliasesRequest req = new IndicesAliasesRequest();
+
+        if (newAlias != null) {
+            newAlias.forEach(alias -> {
+                IndicesAliasesRequest.AliasActions aliasAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD).index(indexName).alias(alias);
+                req.addAliasAction(aliasAction);
+            });
+        }
+
+        if (delAlias != null) {
+            delAlias.forEach(alias -> {
+                IndicesAliasesRequest.AliasActions removeAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.REMOVE).index(indexName).alias(alias);
+                req.addAliasAction(removeAction);
+            });
+        }
+
+        try {
+            return _client.indices().updateAliases(req, RequestOptions.DEFAULT).isAcknowledged();
+        } catch (IOException e) {
+            log.error("", e);
+        }
+        return false;
+    }
+
+    /**
+     * 获取指定别名映射的所有索引名
+     *
+     * @param indexAlias
+     * @return
+     */
+    public Set<String> getIndexs(String indexAlias) {
+        Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
         GetAliasesRequest request = new GetAliasesRequest();
-        request.indices(alias);
+        request.indices(indexAlias);
         request.indicesOptions(IndicesOptions.lenientExpandOpen());
         try {
             Map<String, Set<AliasMetaData>> aliases = _client.indices().getAlias(request, RequestOptions.DEFAULT).getAliases();
             return aliases.keySet();
         } catch (IOException e) {
             log.error("", e);
-            return new HashSet<>(0);
         }
+        return new HashSet<>(0);
     }
 
     /**
-     * 删除老的别名，增加新的别名
+     * 获取当前集群所有索引名（索引名不是以.开头的）
      *
-     * @param aliasOperMap k:操作类型，v: first col -> indexName ;second col -> alias
+     * @return
      */
-    public void updateAlias(Map<String, List<Tuple<String, String>>> aliasOperMap) {
-        IndicesAliasesRequest request = new IndicesAliasesRequest();
-        for (Map.Entry<String, List<Tuple<String, String>>> entry : aliasOperMap.entrySet()) {
-            String type = entry.getKey();
-            List<Tuple<String, String>> list = entry.getValue();
-            for (Tuple<String, String> tup : list) {
-                if ("delete".equals(type)) {
-                    if (existIndexAlias(tup.getV1(), tup.getV2())) {
-                        IndicesAliasesRequest.AliasActions removeAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.REMOVE).index(tup.getV1()).alias(tup.getV2());
-                        request.addAliasAction(removeAction);
-                    }
-                } else if ("add".equals(type)) {
-                    if (existIndex(tup.getV1())) {
-                        IndicesAliasesRequest.AliasActions aliasAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD).index(tup.getV1()).alias(tup.getV2());
-                        request.addAliasAction(aliasAction);
+    public List<String> getAllIndex() {
+        List<String> list = new ArrayList<>();
+        try {
+            ClusterHealthRequest request = new ClusterHealthRequest();
+            ClusterHealthResponse response = _client.cluster().health(request, RequestOptions.DEFAULT);
+            Map<String, ClusterIndexHealth> indices = response.getIndices();
+            if (indices != null) {
+                for (String index : indices.keySet()) {
+                    if (!index.startsWith(".")) {
+                        list.add(index);
                     }
                 }
             }
-        }
-        try {
-            _client.indices().updateAliases(request, RequestOptions.DEFAULT);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("", e);
         }
+        return list;
     }
 
-    public long count(String[] indice, String type, Map<String, Object> conditions) {
+
+    /**
+     * 获取指定索引的定义信息
+     *
+     * @param indexName 索引名
+     * @param type      索引type
+     * @return
+     */
+    public IndexInfo indexSchema(String indexName, String type) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        GetMappingsRequest request = new GetMappingsRequest();
+        request.indices(indexName);
+        request.types(type);
+        request.indicesOptions(IndicesOptions.lenientExpandOpen());
+        try {
+            GetMappingsResponse response = _client.indices().getMapping(request, RequestOptions.DEFAULT);
+            ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> allMappings = response.mappings();
+            MappingMetaData typeMapping = allMappings.get(indexName).get(type);
+            Map<String, Object> mapping = typeMapping.sourceAsMap();
+            if (mapping != null && !mapping.isEmpty()) {
+                IndexInfo indexInf = new IndexInfo();
+                indexInf.setName(indexName);
+                indexInf.setType(type);
+                PropertiesInfo propertiesInfo = new PropertiesInfo();
+                indexInf.setPropInfo(propertiesInfo);
+                LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
+                properties.forEach((k, v) -> {
+                    Map typeInfoMap = (Map) v;
+                    FieldInfo fieldInfo = new FieldInfo();
+                    fieldInfo.setName((String) k);
+                    fieldInfo.setType((String) typeInfoMap.get("type"));
+                    propertiesInfo.addField(fieldInfo);
+                });
+                return indexInf;
+            }
+        } catch (Exception e) {
+            log.error("", e);
+        }
+        return new IndexInfo();
+    }
+
+
+    /**
+     * 为索引添加新字段
+     *
+     * @param indexinf
+     * @return
+     */
+    public boolean addNewField2Index(IndexInfo indexinf) {
+        Preconditions.checkNotNull(indexinf.getName(), "indexName can not be null");
+        Preconditions.checkNotNull(indexinf.getType(), "indexType can not be null");
+        Preconditions.checkNotNull(indexinf.getPropInfo(), "propInfo can not be null");
+
+        PutMappingRequest request = new PutMappingRequest(indexinf.getName());
+        request.type(indexinf.getType());
+        request.timeout(TimeValue.timeValueMinutes(1));
+        request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
+//        request.timeout("2m");
+//        request.masterNodeTimeout("1m");
+        Map<String, Object> properties = new HashMap<>(indexinf.getPropInfo().getFields().size());
+        for (FieldInfo fi : indexinf.getPropInfo().getFields()) {
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", fi.getType());
+            properties.put(fi.getName(), message);
+        }
+        Map<String, Object> jsonMap = new HashMap<>();
+        jsonMap.put("properties", properties);
+        request.source(jsonMap);
+        try {
+            return _client.indices().putMapping(request, RequestOptions.DEFAULT).isAcknowledged();
+        } catch (Exception e) {
+            log.error("", e);
+        }
+        return false;
+    }
+
+
+    /**
+     * 统计满足条件的指定索引的文档总条数
+     *
+     * @param indexName
+     * @param indexType
+     * @param conditions 条件组合，每一组条件之间是and关系，每一组条件都是K=v的关系
+     * @return 查询失败时，返回-1
+     */
+    public long count(String indexName, String indexType, Map<String, Object> conditions) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(indexType, "indexType can not be null");
+
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.fetchSource(false);
 
@@ -281,46 +399,132 @@ public class BaseElasticSearchDataSource {
         cardinality.field("count");
         searchSourceBuilder.aggregation(cardinality);
 
-        SearchRequest searchRequest = new SearchRequest(indice);
+        SearchRequest searchRequest = new SearchRequest(indexName);
+        searchRequest.types(indexType);
         if (conditions != null) {
-            for (String key : conditions.keySet()) {
-                searchSourceBuilder.query(QueryBuilders.matchQuery(key, conditions.get(key)));
-            }
+            conditions.forEach((k, v) -> searchSourceBuilder.query(QueryBuilders.matchQuery(k, v)));
         }
-        if (type != null) {
-            searchRequest.types(type);
-        }
-
         searchRequest.source(searchSourceBuilder);
-
         try {
-            SearchResponse sr = _client.search(searchRequest, RequestOptions.DEFAULT);
-            long totalHits = sr.getHits().getTotalHits();
-            return totalHits;
+            return _client.search(searchRequest, RequestOptions.DEFAULT).getHits().getTotalHits();
         } catch (IOException e) {
             log.error("", e);
         }
         return -1;
     }
 
-    public void createIndex(String indexName, String source) {
-        if (indexName == null) {
-            log.error("indexName is null,please check!");
-            return;
-        }
-        CreateIndexRequest request = new CreateIndexRequest(indexName);
-        request.source(source, XContentType.JSON);
-        request.timeout(TimeValue.timeValueMinutes(2));
-        request.timeout("2m");
+
+    /**
+     * 根据指定ID查询文档数据
+     *
+     * @param indexName
+     * @param indexType
+     * @param id
+     * @param fields    指定需要返回的字段名
+     * @return
+     */
+    public DocData getDoc(String indexName, String indexType, String id, String[] fields) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(indexType, "indexType can not be null");
         try {
-            _client.indices().create(request, RequestOptions.DEFAULT);
+            GetRequest getRequest = new GetRequest(indexName);
+            getRequest.type(indexType);
+            getRequest.id(id);
+            FetchSourceContext sourceContext;
+            if (fields != null) {
+                sourceContext = new FetchSourceContext(true, fields, null);
+            } else {
+                sourceContext = new FetchSourceContext(true, null, null);
+            }
+            getRequest.fetchSourceContext(sourceContext);
+            GetResponse response = this._client.get(getRequest, RequestOptions.DEFAULT);
+            Map<String, Object> source = response.getSource();
+            DocData docData = new DocData();
+            docData.setVersion(response.getVersion());
+            source.forEach((k, v) -> {
+                FieldData fieldData = new FieldData();
+                fieldData.setName(k);
+                fieldData.setVal(v);
+                docData.addField(fieldData);
+            });
+            return docData;
         } catch (IOException e) {
-            e.printStackTrace();
-            log.error("create index error:", e);
+            log.error("", e);
         }
+        return new DocData();
     }
 
-    private BulkProcessor.Builder createBuilder() {
+//    public List<Map<String, Object>> searchDocs(String[] indice, Map<String, Object> conditions, String[] fields, int size) {
+//        List<Map<String, Object>> rel = new ArrayList<>();
+//        try {
+//            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+//            if (conditions != null) {
+//                for (String key : conditions.keySet()) {
+//                    sourceBuilder.query(QueryBuilders.matchQuery(key, conditions.get(key)));
+//                }
+//            }
+//            if (size > 0) {
+//                sourceBuilder.size(size);
+//            }
+//            sourceBuilder.fetchSource(fields, null);
+//
+//            SearchRequest request = new SearchRequest(indice, sourceBuilder);
+//
+//            SearchResponse response = this._client.search(request, RequestOptions.DEFAULT);
+//            SearchHits hits = response.getHits();
+//            SearchHit[] searchHits = hits.getHits();
+//            for (SearchHit hit : searchHits) {
+//                // do something with the SearchHit
+//                rel.add(hit.getSourceAsMap());
+//            }
+//            return rel;
+//        } catch (IOException e) {
+//            log.error("", e);
+//            return null;
+//        }
+//    }
+
+
+//    public ResultCode insertDoc(String indexName, String typeName, Long version, String id, String doc) {
+//        try {
+//            if (version == null || version < 0) {
+//                IndexRequest indexRequest = new IndexRequest();
+//                indexRequest.index(indexName);
+//                indexRequest.type(typeName);
+//                indexRequest.id(id);
+//                indexRequest.source(doc, XContentType.JSON);
+//                _client.index(indexRequest, RequestOptions.DEFAULT);
+//            } else {
+//                UpdateRequest updateRequest = new UpdateRequest();
+//                updateRequest.index(indexName);
+//                updateRequest.type(typeName);
+//                updateRequest.id(id);
+//                updateRequest.doc(doc, XContentType.JSON);
+//                updateRequest.version(version);
+//                _client.update(updateRequest, RequestOptions.DEFAULT);
+//            }
+//        } catch (ElasticsearchStatusException e) {
+//            RestStatus status = e.status();
+//            if ("CONFLICT".equals(status.name()) || 409 == status.getStatus()) {
+//                String detailedMessage = e.getDetailedMessage();
+//                if (detailedMessage.contains("version_conflict")) {
+//                    return ResultCode.VERSION_CONFLICT;
+//                }
+//            }
+//        } catch (IOException e) {
+//            if (log.isDebugEnabled()) {
+//                log.debug("insertDoc method encounter error", e);
+//            }
+//            return ResultCode.IOEXCEPTION;
+//        }
+//        return ResultCode.SUCCESS;
+//    }
+
+
+    private synchronized void loadProcessor() {
+        if (this._bulkProcessor != null) {
+            return;
+        }
         BulkProcessor.Listener processListener = new BulkProcessor.Listener() {
             @Override
             public void beforeBulk(long executionId, BulkRequest request) {
@@ -342,9 +546,6 @@ public class BaseElasticSearchDataSource {
                 log.error("", failure);
             }
         };
-        if (_client == null) {
-            log.error("client is null!!!!!!!!!!!!!!!");
-        }
         try {
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer = (_rq, _listener) -> _client.bulkAsync(_rq, RequestOptions.DEFAULT, _listener);
             BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, processListener);
@@ -353,270 +554,79 @@ public class BaseElasticSearchDataSource {
             builder.setConcurrentRequests(this._esConf.getParallel());
             builder.setFlushInterval(TimeValue.timeValueSeconds(2L));
             builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(2L), 3));
-            return builder;
+            this._bulkProcessor = builder.build();
         } catch (Exception e) {
             log.error("", e);
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ex) {
-            }
+            TimeUtil.sleepSec(1);
+            loadProcessor();
         }
-        return createBuilder();
     }
 
-    public void updateIndex(UpdateSettingsRequest updateReq) {
+
+    /**
+     * 异步批量数据写入
+     * 适合离线批处理场景，不适合实时场景
+     *
+     * @param indexName
+     * @param indexType
+     * @param docs
+     */
+    public void asyncBulkUpsert(String indexName, String indexType, List<DocData> docs) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docs, "docs can not be null");
+        loadProcessor();
         try {
-            _client.indices().putSettings(updateReq, RequestOptions.DEFAULT);
-        } catch (Exception e) {
-            log.error("", e);
-        }
-    }
-
-    public boolean deleIndex(String index) {
-        if (index != null) {
-            try {
-                DeleteIndexRequest request = new DeleteIndexRequest(index);
-                AcknowledgedResponse response = _client.indices().delete(request, RequestOptions.DEFAULT);
-                return response.isAcknowledged();
-            } catch (Exception e) {
-                log.error("", e);
-            }
-        }
-        return false;
-    }
-
-    public List<String> getAliasByIndex(String indexs) {
-        ArrayList<String> aliasList = new ArrayList<>();
-        try {
-            GetAliasesRequest request = new GetAliasesRequest();
-            request.indices(indexs);
-            request.indicesOptions(IndicesOptions.lenientExpandOpen());
-            GetAliasesResponse response = _client.indices().getAlias(request, RequestOptions.DEFAULT);
-            Map<String, Set<AliasMetaData>> aliases = response.getAliases();
-            if (aliases != null) {
-                for (Map.Entry<String, Set<AliasMetaData>> entry : aliases.entrySet()) {
-                    Set<AliasMetaData> value = entry.getValue();
-                    if (value != null) {
-                        for (AliasMetaData amd : value) {
-                            aliasList.add(amd.getAlias());
-                        }
-
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.error("", e);
-        }
-        return aliasList;
-    }
-
-
-    public List<String> listIndex() {
-        ArrayList<String> list = new ArrayList<>();
-        try {
-            ClusterHealthRequest request = new ClusterHealthRequest();
-            ClusterHealthResponse response = _client.cluster().health(request, RequestOptions.DEFAULT);
-            Map<String, ClusterIndexHealth> indices = response.getIndices();
-            if (indices != null) {
-                for (String index : indices.keySet()) {
-                    if (!index.startsWith(".")) {
-                        list.add(index);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.error("", e);
-        }
-        return list;
-    }
-
-    public Optional<IndexInfo> getIndexMapping(String indexName) {
-        GetMappingsRequest request = new GetMappingsRequest();
-        request.indices(indexName);
-        request.types("_doc");
-        request.indicesOptions(IndicesOptions.lenientExpandOpen());
-        try {
-            GetMappingsResponse response = _client.indices().getMapping(request, RequestOptions.DEFAULT);
-            ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> allMappings = response.mappings();
-            MappingMetaData typeMapping = allMappings.get(indexName).get("_doc");
-            Map<String, Object> mapping = typeMapping.sourceAsMap();
-            if (mapping != null && !mapping.isEmpty()) {
-                IndexInfo indexInfo = new IndexInfo();
-                indexInfo.setName(indexName);
-                indexInfo.setType("_doc");
-                PropertiesInfo propertiesInfo = new PropertiesInfo();
-                indexInfo.setPropInfo(propertiesInfo);
-                LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
-                properties.forEach((k, v) -> {
-                    Map typeInfoMap = (Map) v;
-                    FieldInfo fieldInfo = new FieldInfo();
-                    fieldInfo.setName((String) k);
-                    fieldInfo.setType((String) typeInfoMap.get("type"));
-                    propertiesInfo.addField(fieldInfo);
-                });
-                return Optional.ofNullable(indexInfo);
-            }
-        } catch (Exception e) {
-            log.error("", e);
-        }
-        return Optional.empty();
-    }
-
-    public boolean addNewField2Index(String indexName, List<FieldInfo> fieldInfos) {
-        PutMappingRequest request = new PutMappingRequest(indexName);
-        request.type("_doc");
-        request.timeout(TimeValue.timeValueMinutes(2));
-        request.timeout("2m");
-        request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
-        request.masterNodeTimeout("1m");
-        Map<String, Object> properties = new HashMap<>();
-        for (FieldInfo fi : fieldInfos) {
-            Map<String, Object> message = new HashMap<>();
-            message.put("type", fi.getType());
-            properties.put(fi.getName(), message);
-        }
-        Map<String, Object> jsonMap = new HashMap<>();
-        jsonMap.put("properties", properties);
-        request.source(jsonMap);
-        try {
-            AcknowledgedResponse response = _client.indices().putMapping(request, RequestOptions.DEFAULT);
-            return response.isAcknowledged();
-        } catch (Exception e) {
-            log.error("", e);
-        }
-        return false;
-    }
-
-    private synchronized BulkProcessor loadProcessor(boolean reload) {
-        if (processor == null || reload) {
-            BulkProcessor build = createBuilder().build();
-            if (build != null) {
-                processor = build;
-            }
-        }
-        return processor;
-    }
-
-    public void bulkUpsertAsync(boolean useSingle, Integer waitSec, String indexName, List<DocInfo> documentInfos, boolean erroExist) {
-        if (indexName == null || documentInfos == null) {
-            log.error("indexName or documentInfos is null,please check!");
-            return;
-        }
-        int errCount = 0;
-        while (errCount < 3) {
-            try {
-                if (useSingle) {
-                    processor = loadProcessor(false);
-                } else {
-                    processor = getProcess();
-                }
-                for (DocInfo doc : documentInfos) {
-                    Map<String, Object> jsonMap = new HashMap<>();
-                    for (FieldInfo f : doc.getFieldInfoList()) {
-                        jsonMap.put(f.getName(), f.getVal());
-                    }
-                    UpdateRequest request = new UpdateRequest(indexName, "_doc", doc.getId())
-                            .upsert(jsonMap).doc(jsonMap);
-                    request.retryOnConflict(1);
-                    request.waitForActiveShards(1);
-                    request.timeout(TimeValue.timeValueSeconds(30));
-                    processor.add(request);
-                }
-                if (!useSingle) {
-                    processor.awaitClose(waitSec == null ? 15 : waitSec, TimeUnit.SECONDS);
-                }
-                break;
-            } catch (Throwable e) {
-                errCount++;
-                if (processor != null) {
-                    processor.close();
-                }
-                log.error("", e);
-            }
-        }
-        if (errCount == 3 && erroExist) {
-            System.exit(-1);
-        }
-    }
-
-    public void bulkDelByIdAsync(boolean useSingle, Integer waitSec, String indexName, List<DocInfo> documentInfos) {
-        if (indexName == null || documentInfos == null) {
-            log.error("indexName or documentInfos is null,please check!");
-            return;
-        }
-        try {
-            if (useSingle) {
-                processor = loadProcessor(false);
-            } else {
-                processor = getProcess();
-            }
-            for (DocInfo doc : documentInfos) {
-                DeleteRequest request = new DeleteRequest(indexName, "_doc", doc.getId());
+            for (DocData doc : docs) {
+                Map<String, Object> objectMap = doc.toMap();
+                UpdateRequest request = new UpdateRequest(indexName, indexType, doc.getId())
+                        .upsert(objectMap).doc(objectMap);
+                request.retryOnConflict(2);
                 request.waitForActiveShards(1);
-                processor.add(request);
+                request.timeout(TimeValue.timeValueSeconds(30));
+                _bulkProcessor.add(request);
             }
-            if (!useSingle) {
-                processor.awaitClose(waitSec == null ? 15 : waitSec, TimeUnit.SECONDS);
-            }
+        } catch (Throwable e) {
+            log.error("", e);
+        } finally {
+            _bulkProcessor.flush();
+        }
+    }
+
+    /**
+     * 异步批量数据删除，根据doc id进行删除
+     * 适合离线批处理场景，不适合实时场景
+     *
+     * @param indexName
+     * @param indexType
+     * @param docIds
+     */
+    public void asyncBulkDelDoc(String indexName, String indexType, Collection<String> docIds) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docIds, "docIds can not be null");
+        loadProcessor();
+        try {
+            docIds.forEach(id -> {
+                DeleteRequest request = new DeleteRequest(indexName, indexType, id);
+                request.waitForActiveShards(1);
+                _bulkProcessor.add(request);
+            });
         } catch (Exception e) {
-            if (processor != null) {
-                processor.close();
-            }
             log.error("", e);
-            this.bulkDelByIdAsync(useSingle, waitSec, indexName, documentInfos);
+        } finally {
+            this._bulkProcessor.flush();
         }
     }
 
-    public void aWaitCloseProcessor(Integer waitSec) {
+    @Override
+    public void close() {
         try {
-            if (processor != null) {
-                processor.awaitClose(waitSec == null ? 15 : waitSec, TimeUnit.SECONDS);
-            }
-        } catch (InterruptedException e) {
+            this._bulkProcessor.awaitClose(5, TimeUnit.SECONDS);
+            this._client.close();
+        } catch (Exception e) {
             log.error("", e);
         }
-    }
-
-
-    private BulkProcessor getProcess() {
-        return createBuilder().build();
-    }
-
-    public void bulkWriteAsync(String indexName, String type, List<Tuple<String, String>> datas, Long awaitSecond) {
-        if (indexName == null) {
-            log.error("indexName is null,please check!");
-            return;
-        }
-        awaitSecond = awaitSecond == null ? 15 : awaitSecond;
-        BulkProcessor processor = null;
-        try {
-            processor = getProcess();
-            for (int i = 0; i < datas.size(); i++) {
-                Tuple<String, String> tuple = datas.get(i);
-                IndexRequest doc;
-                if (tuple.getV1() == null) {
-                    doc = new IndexRequest(indexName, type);
-                } else {
-                    doc = new IndexRequest(indexName, type, tuple.getV1());
-                }
-                doc.waitForActiveShards(1);
-                try {
-                    doc.source(tuple.getV2().getBytes("UTF-8"), XContentType.JSON);
-                    processor.add(doc);
-                } catch (UnsupportedEncodingException e) {
-                    e.printStackTrace();
-                }
-            }
-            processor.flush();
-            processor.awaitClose(awaitSecond, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            if (processor != null) {
-                processor.close();
-            }
-            e.printStackTrace();
-            bulkWriteAsync(indexName, type, datas, awaitSecond);
-        }
-
     }
 
 }
