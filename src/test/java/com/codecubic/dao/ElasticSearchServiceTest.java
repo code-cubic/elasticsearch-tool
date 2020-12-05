@@ -102,7 +102,7 @@ class ElasticSearchServiceTest {
     @Test
     void asyncBulkUpsert2() {
         ArrayList<DocData> docDatas = new ArrayList<>();
-        for (int i = 2; i < 20; i++) {
+        for (int i = 2; i < 21; i++) {
             DocData doc = new DocData();
             String cid = "10000000" + i;
             doc.setId(cid);
@@ -139,6 +139,7 @@ class ElasticSearchServiceTest {
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals(20, doc.getValDouble("load_bal"));
     }
+
     @Order(11)
     @Test
     void getDoc2() {
@@ -148,6 +149,12 @@ class ElasticSearchServiceTest {
         Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals(20, doc.getValDouble("load_bal"));
+    }
+
+    @Order(20)
+    @Test
+    void count() {
+        Assertions.assertEquals(20, esServ.count("index_20201101", "_doc", null));
     }
 
 

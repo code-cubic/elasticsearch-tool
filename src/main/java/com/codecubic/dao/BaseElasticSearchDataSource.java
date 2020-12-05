@@ -618,7 +618,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
             log.error("", e);
         } finally {
             _bulkProcessor.flush();
-            TimeUtil.sleepSec(500);
+            TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
         }
     }
 

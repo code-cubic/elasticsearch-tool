@@ -23,4 +23,9 @@ public class ESConfig implements Serializable {
 
     private String indexSchemaTemplate;
 
+    /**
+     * 建议不要小于500毫秒
+     */
+    private Integer bufferFlushWaitMill = 500;
+
 }

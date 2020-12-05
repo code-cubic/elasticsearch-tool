@@ -3,7 +3,6 @@ package com.codecubic.dao;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
-import com.codecubic.exception.ESInitException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.RequestConfig;
@@ -23,7 +22,7 @@ public class ElasticSearchSqlDataSource extends BaseElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
 
-    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException {
+    public ElasticSearchSqlDataSource(ESConfig config) {
         this._esConf = config;
         String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");
