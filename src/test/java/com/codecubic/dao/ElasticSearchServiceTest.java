@@ -3,15 +3,14 @@ package com.codecubic.dao;
 import com.codecubic.common.*;
 import com.codecubic.exception.ESInitException;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Order;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.yaml.snakeyaml.Yaml;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ElasticSearchServiceTest {
 
     private ElasticSearchService esServ;
