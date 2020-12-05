@@ -413,6 +413,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param conditions 条件组合，每一组条件之间是and关系，每一组条件都是K=v的关系
      * @return 查询失败时，返回-1
      */
+    @Override
     public long count(String indexName, String indexType, Map<String, Object> conditions) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(indexType, "indexType can not be null");
