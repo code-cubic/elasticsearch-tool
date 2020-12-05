@@ -36,6 +36,7 @@ class ElasticSearchServiceTest {
         prop.addField("cid", "keyword");
         prop.addField("age", "integer");
         prop.addField("bal", "double");
+        prop.addField("name", "keyword");
         Assertions.assertTrue(esServ.createIndex(indexInf));
     }
 
@@ -70,6 +71,7 @@ class ElasticSearchServiceTest {
         names.add("age");
         names.add("bal");
         names.add("load_bal");
+        names.add("name");
         List<FieldInfo> fields = indexInfo.getPropInfo().getFields();
         Assertions.assertNotNull(fields);
         fields.forEach(f -> {
@@ -82,6 +84,8 @@ class ElasticSearchServiceTest {
                 Assertions.assertEquals("double", f.getType());
             } else if (f.getName().equals("load_bal")) {
                 Assertions.assertEquals("double", f.getType());
+            } else if (f.getName().equals("name")) {
+                Assertions.assertEquals("keyword", f.getType());
             }
         });
     }
@@ -110,6 +114,7 @@ class ElasticSearchServiceTest {
             doc.addField(new FieldData("age", i));
             doc.addField(new FieldData("bal", i * 1.5));
             doc.addField(new FieldData("load_bal", 3));
+            doc.addField(new FieldData("name", "姓名" + i));
             docDatas.add(doc);
         }
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
@@ -125,6 +130,7 @@ class ElasticSearchServiceTest {
         doc.addField(new FieldData("age", 20));
         doc.addField(new FieldData("bal", 20d));
         doc.addField(new FieldData("load_bal", 20d));
+        doc.addField(new FieldData("name", "姓名"));
         docDatas.add(doc);
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
     }
@@ -138,6 +144,7 @@ class ElasticSearchServiceTest {
         Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals(20, doc.getValDouble("load_bal"));
+
     }
 
     @Order(11)
@@ -149,6 +156,7 @@ class ElasticSearchServiceTest {
         Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals(20, doc.getValDouble("load_bal"));
+        Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
 
     @Order(20)
