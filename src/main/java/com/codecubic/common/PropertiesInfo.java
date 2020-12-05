@@ -14,4 +14,8 @@ public class PropertiesInfo implements Serializable {
     public void addField(FieldInfo f) {
         this.fields.add(f);
     }
+
+    public void addField(String name, String type) {
+        this.fields.add(new FieldInfo(name, type));
+    }
 }

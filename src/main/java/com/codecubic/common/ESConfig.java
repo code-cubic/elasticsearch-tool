@@ -21,4 +21,6 @@ public class ESConfig implements Serializable {
      */
     private long awaitCloseSec = 2L;
 
+    private String indexSchemaTemplate;
+
 }

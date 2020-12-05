@@ -54,9 +54,17 @@ public class TimeUtil {
         return date1.after(date2);
     }
 
-    public static void sleepSec(Integer sec){
+    public static void sleepSec(Integer sec) {
         try {
-            Thread.sleep(sec*1000);
+            Thread.sleep(sec * 1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void sleepMill(Integer mill) {
+        try {
+            Thread.sleep(mill);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

@@ -114,6 +114,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param indexName 索引名称
      * @param source    索引定义
      */
+    @Override
     public boolean createIndex(String indexName, String source) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(source, "source can not be null");
@@ -133,12 +134,33 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
         return false;
     }
 
+    @Override
+    public boolean createIndex(IndexInfo indexInf) {
+        Preconditions.checkNotNull(indexInf.getName(), "indexName can not be null");
+        Preconditions.checkNotNull(indexInf.getType(), "indexType can not be null");
+        Preconditions.checkNotNull(indexInf.getPropInfo(), "propInfo can not be null");
+
+        CreateIndexRequest request = new CreateIndexRequest(indexInf.getName());
+        String indexSchemaTemplate = _esConf.getIndexSchemaTemplate();
+        String source = indexSchemaTemplate.replaceAll("\\$indexType", indexInf.getType())
+                .replaceAll("\\$properties", indexInf.prop2JsonStr());
+        request.source(source, XContentType.JSON);
+        try {
+            _client.indices().create(request, RequestOptions.DEFAULT);
+            return true;
+        } catch (IOException e) {
+            log.error("create index error:", e);
+        }
+        return false;
+    }
+
     /**
      * 删除索引
      *
      * @param indexName 索引名称
      * @return
      */
+    @Override
     public boolean deleIndex(String indexName) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
@@ -312,6 +334,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param type      索引type
      * @return
      */
+    @Override
     public IndexInfo indexSchema(String indexName, String type) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         GetMappingsRequest request = new GetMappingsRequest();
@@ -352,6 +375,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param indexinf
      * @return
      */
+    @Override
     public boolean addNewField2Index(IndexInfo indexinf) {
         Preconditions.checkNotNull(indexinf.getName(), "indexName can not be null");
         Preconditions.checkNotNull(indexinf.getType(), "indexType can not be null");
@@ -424,6 +448,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param fields    指定需要返回的字段名
      * @return
      */
+    @Override
     public DocData getDoc(String indexName, String indexType, String id, String[] fields) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(indexType, "indexType can not be null");
@@ -441,6 +466,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
             GetResponse response = this._client.get(getRequest, RequestOptions.DEFAULT);
             Map<String, Object> source = response.getSource();
             DocData docData = new DocData();
+            docData.setId(id);
             docData.setVersion(response.getVersion());
             source.forEach((k, v) -> {
                 FieldData fieldData = new FieldData();
@@ -449,7 +475,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
                 docData.addField(fieldData);
             });
             return docData;
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("", e);
         }
         return new DocData();
@@ -572,6 +598,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * @param indexType
      * @param docs
      */
+    @Override
     public void asyncBulkUpsert(String indexName, String indexType, List<DocData> docs) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(indexType, "indexType can not be null");
@@ -591,6 +618,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
             log.error("", e);
         } finally {
             _bulkProcessor.flush();
+            TimeUtil.sleepSec(500);
         }
     }
 

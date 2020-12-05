@@ -13,6 +13,7 @@ public class DocData {
     private long version;
     private List<FieldData> fieldDatas = new ArrayList();
 
+
     public void addField(FieldData f) {
         this.fieldDatas.add(f);
     }
@@ -23,5 +24,32 @@ public class DocData {
             jsonMap.put(f.getName(), f.getVal());
         }
         return jsonMap;
+    }
+
+    public int getValInt(String fName) {
+        for (FieldData f : fieldDatas) {
+            if (f.getName().equals(fName)) {
+                return (Integer) f.getVal();
+            }
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    public String getValStr(String fName) {
+        for (FieldData f : fieldDatas) {
+            if (f.getName().equals(fName)) {
+                return f.getVal() != null ? f.getVal().toString() : null;
+            }
+        }
+        return null;
+    }
+
+    public double getValDouble(String fName) {
+        for (FieldData f : fieldDatas) {
+            if (f.getName().equals(fName)) {
+                return (Double) f.getVal();
+            }
+        }
+        return Double.MIN_VALUE;
     }
 }
