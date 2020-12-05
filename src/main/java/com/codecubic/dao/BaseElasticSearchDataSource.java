@@ -284,6 +284,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      *
      * @return
      */
+    @Override
     public List<String> getAllIndex() {
         List<String> list = new ArrayList<>();
         try {

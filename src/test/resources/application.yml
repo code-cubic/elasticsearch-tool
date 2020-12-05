@@ -1,0 +1,12 @@
+httpHostInfo: "192.168.99.10:9200"
+batch: 5
+parallel: 1
+bufferWriteSize: 2L
+connectTimeoutMillis: 1000
+socketTimeoutMillis: 30000
+connectionRequestTimeoutMillis: 500
+maxConnectPerRoute: 2
+maxConnectTotal: 2
+ioThreadCount: 1
+awaitCloseSec: 2
+
