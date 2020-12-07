@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
 import com.codecubic.common.annotation.SnapShot;
+import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.RequestConfig;
@@ -28,7 +29,7 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
         this._esConf = config;
         String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");
-        String url = String.format("http://%s:%s/_xpack/sql?format=json", split[0], split[1]);
+        String url = String.format("http://%s:%s/_xpack/sql", split[0], split[1]);
         RequestConfig conf = RequestConfig.custom()
                 .setSocketTimeout(this._esConf.getSocketTimeoutMillis())
                 .setConnectTimeout(this._esConf.getConnectTimeoutMillis()).build();
@@ -38,6 +39,7 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     @Override
     public List<Map<String, Object>> query(String sql) {
+        Preconditions.checkNotNull(sql, "sql can not be null");
         JSONObject json = new JSONObject();
         json.put("query", sql);
 

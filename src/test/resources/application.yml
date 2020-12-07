@@ -9,7 +9,7 @@ maxConnectPerRoute: 2
 maxConnectTotal: 2
 ioThreadCount: 1
 awaitCloseSec: 2
-bufferFlushWaitMill: 800
+bufferFlushWaitMill: 1000
 indexSchemaTemplate: '{
                "mappings": {
                  "$docType": {
@@ -21,7 +21,7 @@ indexSchemaTemplate: '{
                  "index": {
                    "number_of_shards": "5",
                    "number_of_replicas": "1",
-                   "refresh_interval": "2s"
+                   "refresh_interval": "1s"
                  }
                }
              }'

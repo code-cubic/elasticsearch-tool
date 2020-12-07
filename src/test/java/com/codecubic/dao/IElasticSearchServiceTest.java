@@ -2,24 +2,29 @@ package com.codecubic.dao;
 
 import com.codecubic.common.*;
 import com.codecubic.exception.ESInitException;
+import com.codecubic.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.yaml.snakeyaml.Yaml;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class IElasticSearchServiceTest {
 
     private IElasticSearchService esServ;
+    private IElasticSearchService esSqlServ;
 
     {
         Yaml yaml = new Yaml();
         ESConfig esConfig = yaml.loadAs(IElasticSearchService.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
         try {
             esServ = new BaseIElasticSearchDataSource(esConfig);
+            esSqlServ = new ElasticSearchSqlDataSource(esConfig);
         } catch (ESInitException e) {
             e.printStackTrace();
         }
@@ -129,7 +134,6 @@ class IElasticSearchServiceTest {
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 20));
         doc.addField(new FieldData("bal", 20d));
-        doc.addField(new FieldData("load_bal", 20d));
         doc.addField(new FieldData("name", "姓名"));
         docDatas.add(doc);
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
@@ -143,7 +147,6 @@ class IElasticSearchServiceTest {
         Assertions.assertEquals("100000001", doc.getId());
         Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
-        Assertions.assertEquals(20, doc.getValDouble("load_bal"));
 
     }
 
@@ -155,7 +158,6 @@ class IElasticSearchServiceTest {
         Assertions.assertEquals("100000001", doc.getId());
         Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
-        Assertions.assertEquals(20, doc.getValDouble("load_bal"));
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
 
@@ -164,13 +166,55 @@ class IElasticSearchServiceTest {
     void count() {
         Assertions.assertEquals(20, esServ.count("index_20201101", "_doc", null));
     }
-
+    @Order(21)
     @Test
-    void delByQuery() {
+    void count02() {
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.putIfAbsent("load_bal", null);
+        paramMap.putIfAbsent("cid", "100000001");
+        Assertions.assertEquals(1, esServ.count("index_20201101", "_doc", paramMap));
+    }
+    @Order(21)
+    @Test
+    void count03() {
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.putIfAbsent("cid", "100000001");
+        Assertions.assertEquals(1, esServ.count("index_20201101", "_doc", paramMap));
     }
 
+    @Order(21)
+    @Test
+    void count04() {
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.putIfAbsent("load_bal", null);
+        Assertions.assertEquals(1, esServ.count("index_20201101", "_doc", paramMap));
+    }
+
+    @Order(25)
     @Test
     void query() {
+        TimeUtil.sleepSec(2);
+        String sql = "select age,count(1) as ct from index_20201101 where age > 19 group by age";
+        List<Map<String, Object>> list = esSqlServ.query(sql);
+        Assertions.assertNotNull(list);
+        Assertions.assertTrue(list.size() > 0);
+        list.forEach(map -> {
+            Assertions.assertEquals(2, map.size());
+            Assertions.assertEquals(2, map.get("ct"));
+            Assertions.assertEquals(20, map.get("age"));
+        });
+    }
+
+    @Order(30)
+    @Test
+    void delByQuery() {
+        HashMap<String, Object> paramMap = new HashMap<>();
+        paramMap.putIfAbsent("load_bal", null);
+        paramMap.putIfAbsent("cid", "100000001");
+        Assertions.assertTrue(esServ.delByQuery("index_20201101", "_doc", paramMap));
+        TimeUtil.sleepSec(2);
+        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
+        Assertions.assertNull(doc.getId());
     }
 
     @Order(998)

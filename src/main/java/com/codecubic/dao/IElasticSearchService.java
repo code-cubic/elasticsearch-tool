@@ -29,7 +29,7 @@ public interface IElasticSearchService {
 
     boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
 
-    List<Map<String, Object>> query(String sql) throws NotImplemtException;
+    List<Map<String, Object>> query(String sql);
 
     void close();
 }

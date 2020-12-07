@@ -434,7 +434,14 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
 
         if (conditions != null) {
-            conditions.forEach((k, v) -> boolQueryBuilder.must(QueryBuilders.matchQuery(k, v)));
+            conditions.forEach((k, v) ->
+            {
+                if (v == null) {
+                    boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
+                } else {
+                    boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
+                }
+            });
         }
         searchSourceBuilder.query(boolQueryBuilder);
         searchRequest.source(searchSourceBuilder);
@@ -659,6 +666,9 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     @Override
     public boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
+        Preconditions.checkNotNull(conditions, "conditions can not be null");
         DeleteByQueryRequest request = new DeleteByQueryRequest(indexName);
         request.setDocTypes(docType);
         request.setConflicts("proceed");
@@ -697,7 +707,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     }
 
     @Override
-    public List<Map<String, Object>> query(String sql) throws NotImplemtException {
+    public List<Map<String, Object>> query(String sql) {
         throw new NotImplemtException();
     }
 
