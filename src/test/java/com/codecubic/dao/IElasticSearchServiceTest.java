@@ -165,6 +165,13 @@ class IElasticSearchServiceTest {
         Assertions.assertEquals(20, esServ.count("index_20201101", "_doc", null));
     }
 
+    @Test
+    void delByQuery() {
+    }
+
+    @Test
+    void query() {
+    }
 
     @Order(998)
     @Test
@@ -177,5 +184,6 @@ class IElasticSearchServiceTest {
     void close() {
         esServ.close();
     }
+
 
 }

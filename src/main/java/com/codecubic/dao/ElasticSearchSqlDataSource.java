@@ -3,6 +3,7 @@ package com.codecubic.dao;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
+import com.codecubic.common.annotation.SnapShot;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.config.RequestConfig;
@@ -18,6 +19,7 @@ import java.util.Map;
  * @author code-cubic
  */
 @Slf4j
+@SnapShot("预览版")
 public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
@@ -33,10 +35,8 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
         _sqlHandler = new HttpClientHandler(url, conf);
     }
 
-    //todo:
-//    String eltSql = "select etl_dt as etl,count(1) as ct from %s group by etl_dt";
-//    List<Map<String, Object>> list = dataSource.searchDocs(String.format(eltSql, indexAlias));
 
+    @Override
     public List<Map<String, Object>> query(String sql) {
         JSONObject json = new JSONObject();
         json.put("query", sql);
@@ -60,8 +60,6 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
                             record.put(keyName, array.get(i));
                         }
                         result.add(record.getInnerMap());
-                    } else {
-                        continue;
                     }
                 }
             }

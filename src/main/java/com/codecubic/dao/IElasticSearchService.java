@@ -2,6 +2,7 @@ package com.codecubic.dao;
 
 import com.codecubic.common.DocData;
 import com.codecubic.common.IndexInfo;
+import com.codecubic.exception.NotImplemtException;
 
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,8 @@ public interface IElasticSearchService {
     long count(String indexName, String docType, Map<String, Object> conditions);
 
     boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
+
+    List<Map<String, Object>> query(String sql) throws NotImplemtException;
 
     void close();
 }

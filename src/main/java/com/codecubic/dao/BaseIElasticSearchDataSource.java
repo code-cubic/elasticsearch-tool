@@ -2,6 +2,7 @@ package com.codecubic.dao;
 
 import com.codecubic.common.*;
 import com.codecubic.exception.ESInitException;
+import com.codecubic.exception.NotImplemtException;
 import com.codecubic.util.TimeUtil;
 import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
@@ -693,6 +694,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         }
 
         return true;
+    }
+
+    @Override
+    public List<Map<String, Object>> query(String sql) throws NotImplemtException {
+        throw new NotImplemtException();
     }
 
     @Override
