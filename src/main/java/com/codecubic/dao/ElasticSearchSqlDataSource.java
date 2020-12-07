@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
 import com.codecubic.common.annotation.SnapShot;
+import com.codecubic.exception.ESInitException;
 import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -25,7 +26,8 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
 
-    public ElasticSearchSqlDataSource(ESConfig config) {
+    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException {
+        super(config);
         this._esConf = config;
         String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");

@@ -18,4 +18,8 @@ public class PropertiesInfo implements Serializable {
     public void addField(String name, String type) {
         this.fields.add(new FieldInfo(name, type));
     }
+
+    public void addFields(List<FieldInfo> fields) {
+        this.fields.addAll(fields);
+    }
 }

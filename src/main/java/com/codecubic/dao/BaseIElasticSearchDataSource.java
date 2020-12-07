@@ -184,6 +184,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param indexName 索引名称
      * @return
      */
+    @Override
     public boolean existIndex(String indexName) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
@@ -204,7 +205,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param indexAlias
      * @return
      */
-    public boolean existIndexAlias(String indexName, String indexAlias) {
+    @Override
+    public boolean existAlias(String indexName, String indexAlias) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
         try {
@@ -224,7 +226,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param indexName
      * @return
      */
-    public Set<String> getIndexAlias(String indexName) {
+    @Override
+    public Set<String> getAliasByIndex(String indexName) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Set<String> alias = new HashSet<>(10);
         try {
@@ -259,7 +262,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param delAlias  删除别名
      * @return
      */
-    public boolean updatIndexAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias) {
+    @Override
+    public boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         IndicesAliasesRequest req = new IndicesAliasesRequest();
 
@@ -291,7 +295,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param indexAlias
      * @return
      */
-    public Set<String> getIndexs(String indexAlias) {
+    @Override
+    public Set<String> getIndexsByAlias(String indexAlias) {
         Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
         GetAliasesRequest request = new GetAliasesRequest();
         request.indices(indexAlias);
@@ -339,7 +344,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @return
      */
     @Override
-    public IndexInfo indexSchema(String indexName, String type) {
+    public IndexInfo getIndexSchema(String indexName, String type) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         GetMappingsRequest request = new GetMappingsRequest();
         request.indices(indexName);
@@ -666,6 +671,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     /**
      * 异步删除查询出的文档
+     *
      * @param indexName
      * @param docType
      * @param conditions

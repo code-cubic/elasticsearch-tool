@@ -7,10 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.yaml.snakeyaml.Yaml;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -28,6 +25,12 @@ class IElasticSearchServiceTest {
         } catch (ESInitException e) {
             e.printStackTrace();
         }
+    }
+
+    @Order(0)
+    @Test
+    void existIndex() {
+        Assertions.assertFalse(esServ.existIndex("index_20201101"));
     }
 
     @Order(1)
@@ -55,6 +58,12 @@ class IElasticSearchServiceTest {
 
     @Order(2)
     @Test
+    void existIndex02() {
+        Assertions.assertTrue(esServ.existIndex("index_20201101"));
+    }
+
+    @Order(2)
+    @Test
     void addNewField2Index() {
         IndexInfo indexInf = new IndexInfo();
         indexInf.setName("index_20201101");
@@ -67,8 +76,8 @@ class IElasticSearchServiceTest {
 
     @Order(3)
     @Test
-    void indexSchema() {
-        IndexInfo indexInfo = esServ.indexSchema("index_20201101", "_doc");
+    void getIndexSchema() {
+        IndexInfo indexInfo = esServ.getIndexSchema("index_20201101", "_doc");
         Assertions.assertEquals("index_20201101", indexInfo.getName());
         Assertions.assertEquals("_doc", indexInfo.getType());
         ArrayList<String> names = new ArrayList<>();
@@ -166,6 +175,7 @@ class IElasticSearchServiceTest {
     void count() {
         Assertions.assertEquals(20, esServ.count("index_20201101", "_doc", null));
     }
+
     @Order(21)
     @Test
     void count02() {
@@ -174,6 +184,7 @@ class IElasticSearchServiceTest {
         paramMap.putIfAbsent("cid", "100000001");
         Assertions.assertEquals(1, esServ.count("index_20201101", "_doc", paramMap));
     }
+
     @Order(21)
     @Test
     void count03() {
@@ -215,6 +226,46 @@ class IElasticSearchServiceTest {
         TimeUtil.sleepSec(2);
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
         Assertions.assertNull(doc.getId());
+    }
+
+    @Order(35)
+    @Test
+    void updatIndxAlias() {
+        ArrayList<String> alias = new ArrayList<>();
+        alias.add("index_a");
+        alias.add("index_b");
+        Assertions.assertTrue(esServ.updatIndxAlias("index_20201101", alias, null));
+    }
+
+    @Order(36)
+    @Test
+    void getAliasByIndex() {
+        Set<String> alias = esServ.getAliasByIndex("index_20201101");
+        alias.forEach(a -> Assertions.assertTrue(a.equals("index_a") || a.equals("index_b")));
+    }
+
+    @Order(37)
+    @Test
+    void updatIndxAlias02() {
+        ArrayList<String> alias = new ArrayList<>();
+        alias.add("index_a");
+        Assertions.assertTrue(esServ.updatIndxAlias("index_20201101", null, alias));
+        esServ.getAliasByIndex("index_20201101").forEach(a -> Assertions.assertTrue(a.equals("index_b")));
+    }
+
+    @Order(38)
+    @Test
+    void getIndexsByAlias() {
+        Set<String> indexs = esServ.getIndexsByAlias("index_b");
+        Assertions.assertNotNull(indexs);
+        Assertions.assertFalse(indexs.isEmpty());
+        indexs.forEach(e -> Assertions.assertEquals("index_20201101", e));
+    }
+
+    @Order(38)
+    @Test
+    void existAlias() {
+        Assertions.assertTrue(esServ.existAlias("index_20201101", "index_b"));
     }
 
     @Order(998)

@@ -4,8 +4,10 @@ import com.codecubic.common.DocData;
 import com.codecubic.common.IndexInfo;
 import org.elasticsearch.client.RestHighLevelClient;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface IElasticSearchService {
 
@@ -17,7 +19,7 @@ public interface IElasticSearchService {
 
     List<String> getAllIndex();
 
-    IndexInfo indexSchema(String indexName, String docType);
+    IndexInfo getIndexSchema(String indexName, String docType);
 
     boolean addNewField2Index(IndexInfo indexinf);
 
@@ -30,6 +32,16 @@ public interface IElasticSearchService {
     boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
 
     List<Map<String, Object>> query(String sql);
+
+    Set<String> getAliasByIndex(String indexName);
+
+    Set<String> getIndexsByAlias(String indexAlias);
+
+    boolean existIndex(String indexName);
+
+    boolean existAlias(String indexName, String indexAlias);
+
+    boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias);
 
     RestHighLevelClient getClient();
 
