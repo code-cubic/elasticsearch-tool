@@ -2,7 +2,7 @@ package com.codecubic.dao;
 
 import com.codecubic.common.DocData;
 import com.codecubic.common.IndexInfo;
-import com.codecubic.exception.NotImplemtException;
+import org.elasticsearch.client.RestHighLevelClient;
 
 import java.util.List;
 import java.util.Map;
@@ -30,6 +30,8 @@ public interface IElasticSearchService {
     boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
 
     List<Map<String, Object>> query(String sql);
+
+    RestHighLevelClient getClient();
 
     void close();
 }

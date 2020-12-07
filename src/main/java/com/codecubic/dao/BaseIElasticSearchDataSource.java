@@ -664,6 +664,13 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     }
 
 
+    /**
+     * 异步删除查询出的文档
+     * @param indexName
+     * @param docType
+     * @param conditions
+     * @return
+     */
     @Override
     public boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
@@ -709,6 +716,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     @Override
     public List<Map<String, Object>> query(String sql) {
         throw new NotImplemtException();
+    }
+
+    @Override
+    public RestHighLevelClient getClient() {
+        return this._client;
     }
 
     @Override
