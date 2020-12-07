@@ -18,7 +18,7 @@ import java.util.Map;
  * @author code-cubic
  */
 @Slf4j
-public class ElasticSearchSqlDataSource extends BaseElasticSearchDataSource {
+public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
 
@@ -32,6 +32,10 @@ public class ElasticSearchSqlDataSource extends BaseElasticSearchDataSource {
                 .setConnectTimeout(this._esConf.getConnectTimeoutMillis()).build();
         _sqlHandler = new HttpClientHandler(url, conf);
     }
+
+    //todo:
+//    String eltSql = "select etl_dt as etl,count(1) as ct from %s group by etl_dt";
+//    List<Map<String, Object>> list = dataSource.searchDocs(String.format(eltSql, indexAlias));
 
     public List<Map<String, Object>> query(String sql) {
         JSONObject json = new JSONObject();

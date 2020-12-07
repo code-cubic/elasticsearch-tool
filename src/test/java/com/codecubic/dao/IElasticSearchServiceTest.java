@@ -11,15 +11,15 @@ import java.util.List;
 
 @Slf4j
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class ElasticSearchServiceTest {
+class IElasticSearchServiceTest {
 
-    private ElasticSearchService esServ;
+    private IElasticSearchService esServ;
 
     {
         Yaml yaml = new Yaml();
-        ESConfig esConfig = yaml.loadAs(ElasticSearchService.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
+        ESConfig esConfig = yaml.loadAs(IElasticSearchService.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
         try {
-            esServ = new BaseElasticSearchDataSource(esConfig);
+            esServ = new BaseIElasticSearchDataSource(esConfig);
         } catch (ESInitException e) {
             e.printStackTrace();
         }

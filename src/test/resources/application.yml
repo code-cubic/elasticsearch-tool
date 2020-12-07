@@ -12,7 +12,7 @@ awaitCloseSec: 2
 bufferFlushWaitMill: 800
 indexSchemaTemplate: '{
                "mappings": {
-                 "$indexType": {
+                 "$docType": {
                    "properties":
                    $properties
                  }

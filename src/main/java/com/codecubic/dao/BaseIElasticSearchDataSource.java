@@ -36,7 +36,10 @@ import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.reindex.BulkByScrollResponse;
+import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.metrics.cardinality.CardinalityAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -53,7 +56,7 @@ import java.util.stream.Collectors;
  * @author code-cubic
  */
 @Slf4j
-public class BaseElasticSearchDataSource implements ElasticSearchService, Closeable {
+public class BaseIElasticSearchDataSource implements IElasticSearchService, Closeable {
 
     protected ESConfig _esConf;
     protected RestHighLevelClient _client;
@@ -62,11 +65,11 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      */
     protected BulkProcessor _bulkProcessor;
 
-    public BaseElasticSearchDataSource() {
+    public BaseIElasticSearchDataSource() {
 
     }
 
-    public BaseElasticSearchDataSource(ESConfig config) throws ESInitException {
+    public BaseIElasticSearchDataSource(ESConfig config) throws ESInitException {
         this._esConf = config;
 
         try {
@@ -137,12 +140,12 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
     @Override
     public boolean createIndex(IndexInfo indexInf) {
         Preconditions.checkNotNull(indexInf.getName(), "indexName can not be null");
-        Preconditions.checkNotNull(indexInf.getType(), "indexType can not be null");
+        Preconditions.checkNotNull(indexInf.getType(), "docType can not be null");
         Preconditions.checkNotNull(indexInf.getPropInfo(), "propInfo can not be null");
 
         CreateIndexRequest request = new CreateIndexRequest(indexInf.getName());
         String indexSchemaTemplate = _esConf.getIndexSchemaTemplate();
-        String source = indexSchemaTemplate.replaceAll("\\$indexType", indexInf.getType())
+        String source = indexSchemaTemplate.replaceAll("\\$docType", indexInf.getType())
                 .replaceAll("\\$properties", indexInf.prop2JsonStr());
         request.source(source, XContentType.JSON);
         try {
@@ -378,7 +381,7 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
     @Override
     public boolean addNewField2Index(IndexInfo indexinf) {
         Preconditions.checkNotNull(indexinf.getName(), "indexName can not be null");
-        Preconditions.checkNotNull(indexinf.getType(), "indexType can not be null");
+        Preconditions.checkNotNull(indexinf.getType(), "docType can not be null");
         Preconditions.checkNotNull(indexinf.getPropInfo(), "propInfo can not be null");
 
         PutMappingRequest request = new PutMappingRequest(indexinf.getName());
@@ -409,14 +412,14 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * 统计满足条件的指定索引的文档总条数
      *
      * @param indexName
-     * @param indexType
+     * @param docType
      * @param conditions 条件组合，每一组条件之间是and关系，每一组条件都是K=v的关系
      * @return 查询失败时，返回-1
      */
     @Override
-    public long count(String indexName, String indexType, Map<String, Object> conditions) {
+    public long count(String indexName, String docType, Map<String, Object> conditions) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
 
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.fetchSource(false);
@@ -426,10 +429,13 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
         searchSourceBuilder.aggregation(cardinality);
 
         SearchRequest searchRequest = new SearchRequest(indexName);
-        searchRequest.types(indexType);
+        searchRequest.types(docType);
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+
         if (conditions != null) {
-            conditions.forEach((k, v) -> searchSourceBuilder.query(QueryBuilders.matchQuery(k, v)));
+            conditions.forEach((k, v) -> boolQueryBuilder.must(QueryBuilders.matchQuery(k, v)));
         }
+        searchSourceBuilder.query(boolQueryBuilder);
         searchRequest.source(searchSourceBuilder);
         try {
             return _client.search(searchRequest, RequestOptions.DEFAULT).getHits().getTotalHits();
@@ -444,18 +450,18 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * 根据指定ID查询文档数据
      *
      * @param indexName
-     * @param indexType
+     * @param docType
      * @param id
      * @param fields    指定需要返回的字段名
      * @return
      */
     @Override
-    public DocData getDoc(String indexName, String indexType, String id, String[] fields) {
+    public DocData getDoc(String indexName, String docType, String id, String[] fields) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
         try {
             GetRequest getRequest = new GetRequest(indexName);
-            getRequest.type(indexType);
+            getRequest.type(docType);
             getRequest.id(id);
             FetchSourceContext sourceContext;
             if (fields != null) {
@@ -596,19 +602,19 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
-     * @param indexType
+     * @param docType
      * @param docs
      */
     @Override
-    public void asyncBulkUpsert(String indexName, String indexType, List<DocData> docs) {
+    public void asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docs, "docs can not be null");
         loadProcessor();
         try {
             for (DocData doc : docs) {
                 Map<String, Object> objectMap = doc.toMap();
-                UpdateRequest request = new UpdateRequest(indexName, indexType, doc.getId())
+                UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                         .upsert(objectMap).doc(objectMap);
                 request.retryOnConflict(2);
                 request.waitForActiveShards(1);
@@ -628,17 +634,17 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
      * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
-     * @param indexType
+     * @param docType
      * @param docIds
      */
-    public void asyncBulkDelDoc(String indexName, String indexType, Collection<String> docIds) {
+    public void asyncBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(indexType, "indexType can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docIds, "docIds can not be null");
         loadProcessor();
         try {
             docIds.forEach(id -> {
-                DeleteRequest request = new DeleteRequest(indexName, indexType, id);
+                DeleteRequest request = new DeleteRequest(indexName, docType, id);
                 request.waitForActiveShards(1);
                 _bulkProcessor.add(request);
             });
@@ -647,6 +653,46 @@ public class BaseElasticSearchDataSource implements ElasticSearchService, Closea
         } finally {
             this._bulkProcessor.flush();
         }
+    }
+
+
+    @Override
+    public boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) {
+        DeleteByQueryRequest request = new DeleteByQueryRequest(indexName);
+        request.setDocTypes(docType);
+        request.setConflicts("proceed");
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        searchSourceBuilder.fetchSource(false);
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        conditions.forEach((k, v) -> {
+            if (v == null) {
+                boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
+            } else {
+                boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
+            }
+        });
+        request.setQuery(boolQueryBuilder);
+        request.setBatchSize(1000);
+        request.setRefresh(true);
+        request.setIndicesOptions(IndicesOptions.LENIENT_EXPAND_OPEN);
+        try {
+            _client.deleteByQueryAsync(request, RequestOptions.DEFAULT, new ActionListener<BulkByScrollResponse>() {
+                @Override
+                public void onResponse(BulkByScrollResponse bulkResponse) {
+
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    //todo:
+                }
+            });
+        } catch (Exception e) {
+            log.error("", e);
+            return false;
+        }
+
+        return true;
     }
 
     @Override
