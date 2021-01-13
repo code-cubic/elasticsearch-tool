@@ -66,10 +66,6 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      */
     protected BulkProcessor _bulkProcessor;
 
-    public BaseIElasticSearchDataSource() {
-
-    }
-
     public BaseIElasticSearchDataSource(ESConfig config) throws ESInitException {
         this._esConf = config;
 
@@ -532,42 +528,6 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 //    }
 
 
-//    public ResultCode insertDoc(String indexName, String typeName, Long version, String id, String doc) {
-//        try {
-//            if (version == null || version < 0) {
-//                IndexRequest indexRequest = new IndexRequest();
-//                indexRequest.index(indexName);
-//                indexRequest.type(typeName);
-//                indexRequest.id(id);
-//                indexRequest.source(doc, XContentType.JSON);
-//                _client.index(indexRequest, RequestOptions.DEFAULT);
-//            } else {
-//                UpdateRequest updateRequest = new UpdateRequest();
-//                updateRequest.index(indexName);
-//                updateRequest.type(typeName);
-//                updateRequest.id(id);
-//                updateRequest.doc(doc, XContentType.JSON);
-//                updateRequest.version(version);
-//                _client.update(updateRequest, RequestOptions.DEFAULT);
-//            }
-//        } catch (ElasticsearchStatusException e) {
-//            RestStatus status = e.status();
-//            if ("CONFLICT".equals(status.name()) || 409 == status.getStatus()) {
-//                String detailedMessage = e.getDetailedMessage();
-//                if (detailedMessage.contains("version_conflict")) {
-//                    return ResultCode.VERSION_CONFLICT;
-//                }
-//            }
-//        } catch (IOException e) {
-//            if (log.isDebugEnabled()) {
-//                log.debug("insertDoc method encounter error", e);
-//            }
-//            return ResultCode.IOEXCEPTION;
-//        }
-//        return ResultCode.SUCCESS;
-//    }
-
-
     private synchronized void loadProcessor() {
         if (this._bulkProcessor != null) {
             return;
@@ -611,7 +571,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
 
     /**
-     * 异步批量数据写入
+     * 异步批量数据写入或更新
      * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
@@ -637,6 +597,41 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         } catch (Throwable e) {
             log.error("", e);
         } finally {
+            _bulkProcessor.flush();
+            TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
+        }
+    }
+
+    /**
+     * 异步数据写入或更新
+     * 适合离线批处理场景，不适合实时场景
+     *
+     * @param indexName
+     * @param docType
+     * @param doc
+     */
+    @Override
+    public void asyncBulkUpsert(String indexName, String docType, DocData doc) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
+        Preconditions.checkNotNull(doc, "doc can not be null");
+        loadProcessor();
+        try {
+            Map<String, Object> objectMap = doc.toMap();
+            UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
+                    .upsert(objectMap).doc(objectMap);
+            request.retryOnConflict(2);
+            request.waitForActiveShards(1);
+            request.timeout(TimeValue.timeValueSeconds(30));
+            _bulkProcessor.add(request);
+        } catch (Throwable e) {
+            log.error("", e);
+        }
+    }
+
+    @Override
+    public void flushWriteBuffer(){
+        if(_bulkProcessor!=null){
             _bulkProcessor.flush();
             TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
         }
@@ -732,8 +727,12 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     @Override
     public void close() {
         try {
-            this._bulkProcessor.awaitClose(5, TimeUnit.SECONDS);
-            this._client.close();
+            if (this._bulkProcessor != null) {
+                this._bulkProcessor.awaitClose(5, TimeUnit.SECONDS);
+            }
+            if (this._client != null) {
+                this._client.close();
+            }
         } catch (Exception e) {
             log.error("", e);
         }

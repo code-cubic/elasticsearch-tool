@@ -148,13 +148,24 @@ class IElasticSearchServiceTest {
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
     }
 
+    @Order(6)
+    @Test
+    void asyncBulkUpsert4() {
+        DocData doc = new DocData();
+        doc.setId("100000001");
+        doc.addField(new FieldData("cid", "100000001"));
+        doc.addField(new FieldData("age", 40));
+        doc.addField(new FieldData("name", "姓名"));
+        esServ.asyncBulkUpsert("index_20201101", "_doc", doc);
+    }
+
     @Order(10)
     @Test
     void getDoc() {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(20, doc.getValInt("age"));
+        Assertions.assertEquals(40, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
 
     }

@@ -27,6 +27,10 @@ public interface IElasticSearchService {
 
     void asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
 
+    void asyncBulkUpsert(String indexName, String docType, DocData doc);
+
+    void flushWriteBuffer();
+
     long count(String indexName, String docType, Map<String, Object> conditions);
 
     boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
