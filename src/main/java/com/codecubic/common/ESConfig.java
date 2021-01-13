@@ -28,5 +28,7 @@ public class ESConfig implements Serializable {
      */
     private Integer bufferFlushWaitMill = 1000;
 
+    private Integer reqWriteWaitMill = 10000;
+
 
 }

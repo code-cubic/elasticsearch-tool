@@ -157,6 +157,8 @@ class IElasticSearchServiceTest {
         doc.addField(new FieldData("age", 40));
         doc.addField(new FieldData("name", "姓名"));
         esServ.asyncBulkUpsert("index_20201101", "_doc", doc);
+        esServ.flushWriteBuffer();
+        TimeUtil.sleepSec(2);
     }
 
     @Order(10)
@@ -176,7 +178,7 @@ class IElasticSearchServiceTest {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(20, doc.getValInt("age"));
+        Assertions.assertEquals(40, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
@@ -216,13 +218,13 @@ class IElasticSearchServiceTest {
     @Test
     void query() {
         TimeUtil.sleepSec(2);
-        String sql = "select age,count(1) as ct from index_20201101 where age > 19 group by age";
+        String sql = "select age,count(1) as ct from index_20201101 where age = 20 group by age";
         List<Map<String, Object>> list = esSqlServ.query(sql);
         Assertions.assertNotNull(list);
         Assertions.assertTrue(list.size() > 0);
         list.forEach(map -> {
             Assertions.assertEquals(2, map.size());
-            Assertions.assertEquals(2, map.get("ct"));
+            Assertions.assertEquals(1, map.get("ct"));
             Assertions.assertEquals(20, map.get("age"));
         });
     }

@@ -587,12 +587,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         try {
             for (DocData doc : docs) {
                 Map<String, Object> objectMap = doc.toMap();
-                UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
-                        .upsert(objectMap).doc(objectMap);
-                request.retryOnConflict(2);
-                request.waitForActiveShards(1);
-                request.timeout(TimeValue.timeValueSeconds(30));
-                _bulkProcessor.add(request);
+                docWrite(indexName, docType, doc, objectMap);
             }
         } catch (Throwable e) {
             log.error("", e);
@@ -600,6 +595,15 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             _bulkProcessor.flush();
             TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
         }
+    }
+
+    private void docWrite(String indexName, String docType, DocData doc, Map<String, Object> objectMap) {
+        UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
+                .upsert(objectMap).doc(objectMap);
+        request.retryOnConflict(2);
+        request.waitForActiveShards(1);
+        request.timeout(TimeValue.timeValueSeconds(_esConf.getReqWriteWaitMill()));
+        _bulkProcessor.add(request);
     }
 
     /**
@@ -618,12 +622,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         loadProcessor();
         try {
             Map<String, Object> objectMap = doc.toMap();
-            UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
-                    .upsert(objectMap).doc(objectMap);
-            request.retryOnConflict(2);
-            request.waitForActiveShards(1);
-            request.timeout(TimeValue.timeValueSeconds(30));
-            _bulkProcessor.add(request);
+            docWrite(indexName, docType, doc, objectMap);
         } catch (Throwable e) {
             log.error("", e);
         }

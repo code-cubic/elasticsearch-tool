@@ -9,7 +9,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.code-cubic</groupId>
     <artifactId>elasticsearch-tool</artifactId>
-    <version>6.5.4.20201230-RELEASE</version>
+    <version>6.5.4.20210101-RELEASE</version>
     <packaging>jar</packaging>
 
 
