@@ -22,4 +22,10 @@ public class PropertiesInfo implements Serializable {
     public void addFields(List<FieldInfo> fields) {
         this.fields.addAll(fields);
     }
+
+    public void addFields(FieldInfo... fields) {
+        for (FieldInfo f : fields) {
+            this.fields.add(f);
+        }
+    }
 }

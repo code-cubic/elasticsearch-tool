@@ -27,7 +27,7 @@ public interface IElasticSearchService {
 
     void asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
 
-    void asyncBulkUpsert(String indexName, String docType, DocData doc);
+    void asyncUpsert(String indexName, String docType, DocData doc);
 
     void flushWriteBuffer();
 

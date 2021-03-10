@@ -363,6 +363,16 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                     FieldInfo fieldInfo = new FieldInfo();
                     fieldInfo.setName((String) k);
                     fieldInfo.setType((String) typeInfoMap.get("type"));
+                    if (fieldInfo.getType().equalsIgnoreCase("nested") || fieldInfo.getType().equalsIgnoreCase("object")) {
+                        Map subProps = (Map) typeInfoMap.get("properties");
+                        subProps.forEach((subK, subV) -> {
+                            FieldInfo subField = new FieldInfo();
+                            Map subMap = (Map) subV;
+                            subField.setName((String) subK);
+                            subField.setType((String) subMap.get("type"));
+                            fieldInfo.addFields(subField);
+                        });
+                    }
                     propertiesInfo.addField(fieldInfo);
                 });
                 return indexInf;
@@ -390,11 +400,12 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         request.type(indexinf.getType());
         request.timeout(TimeValue.timeValueMinutes(1));
         request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
-//        request.timeout("2m");
-//        request.masterNodeTimeout("1m");
         Map<String, Object> properties = new HashMap<>(indexinf.getPropInfo().getFields().size());
         for (FieldInfo fi : indexinf.getPropInfo().getFields()) {
             Map<String, Object> message = new HashMap<>();
+            if ("nested".equalsIgnoreCase(fi.getType()) || "object".equalsIgnoreCase(fi.getType())) {
+                message.put("properties", fi.getInnerFieldTypeMap());
+            }
             message.put("type", fi.getType());
             properties.put(fi.getName(), message);
         }
@@ -615,7 +626,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param doc
      */
     @Override
-    public void asyncBulkUpsert(String indexName, String docType, DocData doc) {
+    public void asyncUpsert(String indexName, String docType, DocData doc) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(doc, "doc can not be null");
@@ -629,8 +640,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     }
 
     @Override
-    public void flushWriteBuffer(){
-        if(_bulkProcessor!=null){
+    public void flushWriteBuffer() {
+        if (_bulkProcessor != null) {
             _bulkProcessor.flush();
             TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
         }

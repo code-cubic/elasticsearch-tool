@@ -1,5 +1,7 @@
 package com.codecubic.dao;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.*;
 import com.codecubic.exception.ESInitException;
 import com.codecubic.util.TimeUtil;
@@ -45,6 +47,10 @@ class IElasticSearchServiceTest {
         prop.addField("age", "integer");
         prop.addField("bal", "double");
         prop.addField("name", "keyword");
+        FieldInfo nestedTest = new FieldInfo("nested_test", "nested");
+        nestedTest.addFields(new FieldInfo("prd", "keyword"));
+        nestedTest.addFields(new FieldInfo("bal", "double"));
+        prop.addFields(nestedTest);
         Assertions.assertTrue(esServ.createIndex(indexInf));
     }
 
@@ -71,6 +77,10 @@ class IElasticSearchServiceTest {
         PropertiesInfo prop = new PropertiesInfo();
         indexInf.setPropInfo(prop);
         prop.addField("load_bal", "double");
+        FieldInfo nestedTest = new FieldInfo("nested_test2", "nested");
+        nestedTest.addFields(new FieldInfo("prd", "keyword"));
+        nestedTest.addFields(new FieldInfo("bal", "double"));
+        prop.addFields(nestedTest);
         Assertions.assertTrue(esServ.addNewField2Index(indexInf));
     }
 
@@ -86,6 +96,8 @@ class IElasticSearchServiceTest {
         names.add("bal");
         names.add("load_bal");
         names.add("name");
+        names.add("nested_test");
+        names.add("nested_test2");
         List<FieldInfo> fields = indexInfo.getPropInfo().getFields();
         Assertions.assertNotNull(fields);
         fields.forEach(f -> {
@@ -106,14 +118,12 @@ class IElasticSearchServiceTest {
 
     @Order(4)
     @Test
-    void asyncBulkUpsert() {
-        ArrayList<DocData> docDatas = new ArrayList<>();
+    void asyncUpsert() {
         DocData doc = new DocData();
         doc.setId("100000001");
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 10));
-        docDatas.add(doc);
-        esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
+        esServ.asyncUpsert("index_20201101", "_doc", doc);
     }
 
     @Order(4)
@@ -129,6 +139,16 @@ class IElasticSearchServiceTest {
             doc.addField(new FieldData("bal", i * 1.5));
             doc.addField(new FieldData("load_bal", 3));
             doc.addField(new FieldData("name", "姓名" + i));
+            JSONArray nestedTestVals = new JSONArray();
+            JSONObject val1 = new JSONObject();
+            val1.put("prd","hhh");
+            val1.put("bal",2000);
+            nestedTestVals.add(val1);
+            JSONObject val2 = new JSONObject();
+            val2.put("prd","hhh2");
+            val2.put("bal",50.55);
+            nestedTestVals.add(val2);
+            doc.addField(new FieldData("nested_test", nestedTestVals));
             docDatas.add(doc);
         }
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
@@ -156,7 +176,7 @@ class IElasticSearchServiceTest {
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 40));
         doc.addField(new FieldData("name", "姓名"));
-        esServ.asyncBulkUpsert("index_20201101", "_doc", doc);
+        esServ.asyncUpsert("index_20201101", "_doc", doc);
         esServ.flushWriteBuffer();
         TimeUtil.sleepSec(2);
     }
@@ -164,7 +184,7 @@ class IElasticSearchServiceTest {
     @Order(10)
     @Test
     void getDoc() {
-        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal"});
+        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal","nested_test.prd","nested_test.bal"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
         Assertions.assertEquals(40, doc.getValInt("age"));
@@ -183,6 +203,14 @@ class IElasticSearchServiceTest {
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
 
+    @Order(12)
+    @Test
+    void getDoc3() {
+        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000002", new String[]{"age", "bal", "load_bal","nested_test","nested_test2"});
+        Assertions.assertNotNull(doc);
+        Assertions.assertEquals("100000002", doc.getId());
+
+    }
     @Order(20)
     @Test
     void count() {
