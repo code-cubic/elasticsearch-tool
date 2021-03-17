@@ -54,7 +54,6 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
@@ -66,15 +65,22 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     protected ESConfig _esConf;
     protected RestHighLevelClient _client;
-    protected BulkProcessor _bulkProcessor;
+    protected volatile BulkProcessor _bulkProcessor;
     protected Long _bulkPrssLastInitTime;
     protected List<DocWriteRequest> _failedReqs = new LinkedList<>();
     protected boolean _reqSuss = true;
     protected Field _bulkProcessorField;
     protected Long _tmpBuffSize;
+    protected int _tmpBatchSize;
     protected volatile boolean _close = false;
 
-    protected void initClient() throws ESInitException {
+    protected synchronized void initClient() throws ESInitException {
+        if (_client != null) {
+            try {
+                _client.close();
+            } catch (IOException e) {
+            }
+        }
         try {
             String[] split = StringUtils.split(_esConf.getHttpHostInfo(), ",");
             List<HttpHost> httpHosts = Arrays.stream(split).map(e -> {
@@ -119,6 +125,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     public BaseIElasticSearchDataSource(ESConfig config) throws ESInitException, NoSuchFieldException {
         _esConf = config;
         _tmpBuffSize = _esConf.getBufferWriteSize();
+        _tmpBatchSize = _esConf.getBatch();
 
         initClient();
         _bulkProcessorField = BaseIElasticSearchDataSource.class.getDeclaredField("_bulkProcessor");
@@ -127,19 +134,30 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         try {
             CompletableFuture.supplyAsync(() -> {
                 while (!_close) {
-                    if (!_reqSuss && (System.currentTimeMillis() - _bulkPrssLastInitTime) > _esConf.getReqFailRetryWaitSec()) {
+                    if (!_reqSuss && (System.currentTimeMillis() - _bulkPrssLastInitTime) > _esConf.getReqFailRetryWaitSec() * 1000) {
                         log.info("reqFailed retry start");
                         try {
-                            _tmpBuffSize = _tmpBuffSize / 2;
-                            _tmpBuffSize = _tmpBuffSize < 1 ? 1 : _tmpBuffSize;
+                            _tmpBuffSize = _tmpBuffSize / 3;
+                            _tmpBuffSize = _tmpBuffSize < 1 ? -1 : _tmpBuffSize;
                             _esConf.setBufferWriteSize(_tmpBuffSize);
+                            if (_tmpBuffSize == -1) {
+                                _tmpBatchSize = _tmpBatchSize / 3;
+                                _tmpBatchSize = _tmpBatchSize < 10 ? 10 : _tmpBatchSize;
+                                _esConf.setBatch(_tmpBatchSize);
+                            }
+                            _bulkProcessor = null;
+                            if (!_failedReqs.isEmpty()) {
+                                _reqSuss = true;
+                            }
                             initClient();
                             loadProcessor(true);
+
                         } catch (Exception e) {
                             log.error("", e);
                         }
                     }
-                    TimeUtil.sleepSec(_esConf.getReqFailRetryWaitSec());
+                    TimeUtil.sleepSec(2);
+
                 }
                 return null;
             }, Executors.newSingleThreadExecutor()).exceptionally((throwable -> {
@@ -152,8 +170,10 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                     while (!_failedReqs.isEmpty()) {
                         try {
                             for (int i = 0; i < _failedReqs.size(); ) {
-                                _bulkProcessor.add(_failedReqs.get(0));
-                                _failedReqs.remove(0);
+                                while (_bulkProcessor == null) {
+                                    TimeUtil.sleepSec(2);
+                                }
+                                _bulkProcessor.add(_failedReqs.remove(0));
                             }
                         } catch (Exception e) {
 //                            log.error("", e);
@@ -583,7 +603,10 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     }
 
     private synchronized void loadProcessor(boolean reload) {
-        if (_bulkProcessor != null || (!reload && _bulkPrssLastInitTime != null)) {
+        if (!reload && _bulkPrssLastInitTime != null) {
+            return;
+        }
+        if (_bulkProcessor != null) {
             return;
         }
         log.info("loadProcessor");
@@ -789,15 +812,13 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     @Override
     public void close() {
         try {
-            if (_bulkProcessor != null) {
+            if (_bulkPrssLastInitTime != null) {
+                while (!(_failedReqs.isEmpty() && _reqSuss)) {
+                    TimeUtil.sleepSec(1);
+                }
                 _bulkProcessor.flush();
-                _bulkProcessor.awaitClose(_esConf.getAwaitCloseSec(), TimeUnit.SECONDS);
+                _close = true;
             }
-            while (!(_failedReqs.isEmpty() && _reqSuss)) {
-                TimeUtil.sleepSec(1);
-            }
-            _bulkProcessor.flush();
-            _close = true;
             if (this._client != null) {
                 this._client.close();
             }
