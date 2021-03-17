@@ -1,6 +1,7 @@
 package com.codecubic.dao;
 
 import com.codecubic.common.*;
+import com.codecubic.exception.BulkWriteException;
 import com.codecubic.exception.ESInitException;
 import com.codecubic.exception.NotImplemtException;
 import com.codecubic.util.TimeUtil;
@@ -10,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
 import org.apache.http.impl.nio.reactor.IOReactorConfig;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest;
@@ -48,7 +50,10 @@ import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -61,16 +66,17 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     protected ESConfig _esConf;
     protected RestHighLevelClient _client;
-    /**
-     * todo:使用单例processors时可能，存在意想不到的问题，需要考虑连接失败时的重新构建
-     */
     protected BulkProcessor _bulkProcessor;
+    protected Long _bulkPrssLastInitTime;
+    protected List<DocWriteRequest> _failedReqs = new LinkedList<>();
+    protected boolean _reqSuss = true;
+    protected Field _bulkProcessorField;
+    protected Long _tmpBuffSize;
+    protected volatile boolean _close = false;
 
-    public BaseIElasticSearchDataSource(ESConfig config) throws ESInitException {
-        this._esConf = config;
-
+    protected void initClient() throws ESInitException {
         try {
-            String[] split = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
+            String[] split = StringUtils.split(_esConf.getHttpHostInfo(), ",");
             List<HttpHost> httpHosts = Arrays.stream(split).map(e -> {
                 String[] host = StringUtils.split(e, ":");
                 return new HttpHost(host[0], Integer.parseInt(host[1]));
@@ -80,18 +86,18 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             RestClientBuilder clientBuilder = RestClient.builder(httpHosts1);
 
             clientBuilder.setRequestConfigCallback(builder ->
-                    builder.setConnectTimeout(this._esConf.getConnectTimeoutMillis())
-                            .setSocketTimeout(this._esConf.getSocketTimeoutMillis())
-                            .setConnectionRequestTimeout(this._esConf.getConnectionRequestTimeoutMillis()));
+                    builder.setConnectTimeout(_esConf.getConnectTimeoutMillis())
+                            .setSocketTimeout(_esConf.getSocketTimeoutMillis())
+                            .setConnectionRequestTimeout(_esConf.getConnectionRequestTimeoutMillis()));
             //设置节点选择器
             clientBuilder.setNodeSelector(NodeSelector.SKIP_DEDICATED_MASTERS);
             clientBuilder.setHttpClientConfigCallback(
                     httpAsyncClientBuilder ->
                             httpAsyncClientBuilder.setDefaultIOReactorConfig(
                                     IOReactorConfig.custom()
-                                            .setIoThreadCount(this._esConf.getIoThreadCount()).build())
-                                    .setMaxConnPerRoute(this._esConf.getMaxConnectPerRoute())
-                                    .setMaxConnTotal(this._esConf.getMaxConnectTotal())
+                                            .setIoThreadCount(_esConf.getIoThreadCount()).build())
+                                    .setMaxConnPerRoute(_esConf.getMaxConnectPerRoute())
+                                    .setMaxConnTotal(_esConf.getMaxConnectTotal())
             );
             //设置监听器，每次节点失败都可以监听到，可以作额外处理
             clientBuilder.setFailureListener(new RestClient.FailureListener() {
@@ -102,6 +108,68 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                 }
             }).setMaxRetryTimeoutMillis(5 * 60 * 1000);
             this._client = new RestHighLevelClient(clientBuilder);
+        } catch (Exception e) {
+            log.error("", e);
+            throw new ESInitException(e);
+        }
+        log.info("init client ok!");
+    }
+
+
+    public BaseIElasticSearchDataSource(ESConfig config) throws ESInitException, NoSuchFieldException {
+        _esConf = config;
+        _tmpBuffSize = _esConf.getBufferWriteSize();
+
+        initClient();
+        _bulkProcessorField = BaseIElasticSearchDataSource.class.getDeclaredField("_bulkProcessor");
+        _bulkProcessorField.setAccessible(true);
+
+        try {
+            CompletableFuture.supplyAsync(() -> {
+                while (!_close) {
+                    if (!_reqSuss && (System.currentTimeMillis() - _bulkPrssLastInitTime) > _esConf.getReqFailRetryWaitSec()) {
+                        log.info("reqFailed retry start");
+                        try {
+                            _tmpBuffSize = _tmpBuffSize / 2;
+                            _tmpBuffSize = _tmpBuffSize < 1 ? 1 : _tmpBuffSize;
+                            _esConf.setBufferWriteSize(_tmpBuffSize);
+                            initClient();
+                            loadProcessor(true);
+                        } catch (Exception e) {
+                            log.error("", e);
+                        }
+                    }
+                    TimeUtil.sleepSec(_esConf.getReqFailRetryWaitSec());
+                }
+                return null;
+            }, Executors.newSingleThreadExecutor()).exceptionally((throwable -> {
+                log.error("", throwable);
+                return null;
+            }));
+
+            CompletableFuture.supplyAsync(() -> {
+                while (!_close) {
+                    while (!_failedReqs.isEmpty()) {
+                        try {
+                            for (int i = 0; i < _failedReqs.size(); ) {
+                                _bulkProcessor.add(_failedReqs.get(0));
+                                _failedReqs.remove(0);
+                            }
+                        } catch (Exception e) {
+//                            log.error("", e);
+                        }
+                    }
+                    if (_failedReqs.isEmpty()) {
+                        _reqSuss = true;
+                    }
+                    TimeUtil.sleepSec(2);
+                }
+                return null;
+            }, Executors.newSingleThreadExecutor()).exceptionally((throwable -> {
+                log.error("", throwable);
+                return null;
+            }));
+
         } catch (Exception e) {
             log.error("", e);
             throw new ESInitException(e);
@@ -121,10 +189,6 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
         CreateIndexRequest request = new CreateIndexRequest(indexName);
         request.source(source, XContentType.JSON);
-/*
-        request.timeout(TimeValue.timeValueMinutes(2));
-        request.timeout("2m");
-*/
         try {
             _client.indices().create(request, RequestOptions.DEFAULT);
             return true;
@@ -349,33 +413,43 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         try {
             GetMappingsResponse response = _client.indices().getMapping(request, RequestOptions.DEFAULT);
             ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> allMappings = response.mappings();
-            MappingMetaData typeMapping = allMappings.get(indexName).get(type);
-            Map<String, Object> mapping = typeMapping.sourceAsMap();
-            if (mapping != null && !mapping.isEmpty()) {
-                IndexInfo indexInf = new IndexInfo();
-                indexInf.setName(indexName);
-                indexInf.setType(type);
-                PropertiesInfo propertiesInfo = new PropertiesInfo();
-                indexInf.setPropInfo(propertiesInfo);
-                LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
-                properties.forEach((k, v) -> {
-                    Map typeInfoMap = (Map) v;
-                    FieldInfo fieldInfo = new FieldInfo();
-                    fieldInfo.setName((String) k);
-                    fieldInfo.setType((String) typeInfoMap.get("type"));
-                    if (fieldInfo.getType().equalsIgnoreCase("nested") || fieldInfo.getType().equalsIgnoreCase("object")) {
-                        Map subProps = (Map) typeInfoMap.get("properties");
-                        subProps.forEach((subK, subV) -> {
-                            FieldInfo subField = new FieldInfo();
-                            Map subMap = (Map) subV;
-                            subField.setName((String) subK);
-                            subField.setType((String) subMap.get("type"));
-                            fieldInfo.addFields(subField);
+            ImmutableOpenMap<String, MappingMetaData> indexMaper = allMappings.get(indexName);
+            if (indexMaper != null) {
+                MappingMetaData typeMapping = indexMaper.get(type);
+
+                if (typeMapping != null) {
+                    Map<String, Object> mapping = typeMapping.sourceAsMap();
+                    if (mapping != null && !mapping.isEmpty()) {
+                        IndexInfo indexInf = new IndexInfo();
+                        indexInf.setName(indexName);
+                        indexInf.setType(type);
+                        PropertiesInfo propertiesInfo = new PropertiesInfo();
+                        indexInf.setPropInfo(propertiesInfo);
+                        LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
+                        properties.forEach((k, v) -> {
+                            Map typeInfoMap = (Map) v;
+                            FieldInfo fieldInfo = new FieldInfo();
+                            fieldInfo.setName((String) k);
+                            fieldInfo.setType((String) typeInfoMap.get("type"));
+                            try {
+                                if ("nested".equalsIgnoreCase(fieldInfo.getType()) || "object".equalsIgnoreCase(fieldInfo.getType())) {
+                                    Map subProps = (Map) typeInfoMap.get("properties");
+                                    subProps.forEach((subK, subV) -> {
+                                        FieldInfo subField = new FieldInfo();
+                                        Map subMap = (Map) subV;
+                                        subField.setName((String) subK);
+                                        subField.setType((String) subMap.get("type"));
+                                        fieldInfo.addFields(subField);
+                                    });
+                                }
+                            } catch (Exception e) {
+                                log.error("", e);
+                            }
+                            propertiesInfo.addField(fieldInfo);
                         });
+                        return indexInf;
                     }
-                    propertiesInfo.addField(fieldInfo);
-                });
-                return indexInf;
+                }
             }
         } catch (Exception e) {
             log.error("", e);
@@ -508,41 +582,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         return new DocData();
     }
 
-//    public List<Map<String, Object>> searchDocs(String[] indice, Map<String, Object> conditions, String[] fields, int size) {
-//        List<Map<String, Object>> rel = new ArrayList<>();
-//        try {
-//            SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-//            if (conditions != null) {
-//                for (String key : conditions.keySet()) {
-//                    sourceBuilder.query(QueryBuilders.matchQuery(key, conditions.get(key)));
-//                }
-//            }
-//            if (size > 0) {
-//                sourceBuilder.size(size);
-//            }
-//            sourceBuilder.fetchSource(fields, null);
-//
-//            SearchRequest request = new SearchRequest(indice, sourceBuilder);
-//
-//            SearchResponse response = this._client.search(request, RequestOptions.DEFAULT);
-//            SearchHits hits = response.getHits();
-//            SearchHit[] searchHits = hits.getHits();
-//            for (SearchHit hit : searchHits) {
-//                // do something with the SearchHit
-//                rel.add(hit.getSourceAsMap());
-//            }
-//            return rel;
-//        } catch (IOException e) {
-//            log.error("", e);
-//            return null;
-//        }
-//    }
-
-
-    private synchronized void loadProcessor() {
-        if (this._bulkProcessor != null) {
+    private synchronized void loadProcessor(boolean reload) {
+        if (_bulkProcessor != null || (!reload && _bulkPrssLastInitTime != null)) {
             return;
         }
+        log.info("loadProcessor");
         BulkProcessor.Listener processListener = new BulkProcessor.Listener() {
             @Override
             public void beforeBulk(long executionId, BulkRequest request) {
@@ -553,8 +597,16 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
                 for (BulkItemResponse bulkItemResponse : response) {
                     if (bulkItemResponse.isFailed()) {
-                        log.error(response.buildFailureMessage());
-                        log.error("batch partial failure,executionId:{}", executionId);
+                        int status = bulkItemResponse.status().getStatus();
+                        if (429 == status) {
+                            _bulkProcessor = null;
+                            _failedReqs.addAll(request.requests());
+                            _reqSuss = false;
+                            log.warn("get 429 status,retry this batch!");
+                        } else {
+                            log.error(response.buildFailureMessage());
+                            log.error("batch partial failure,executionId:{}", executionId);
+                        }
                     }
                 }
             }
@@ -567,16 +619,16 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         try {
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer = (_rq, _listener) -> _client.bulkAsync(_rq, RequestOptions.DEFAULT, _listener);
             BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, processListener);
-            builder.setBulkActions(this._esConf.getBatch());
-            builder.setBulkSize(new ByteSizeValue(this._esConf.getBufferWriteSize(), ByteSizeUnit.MB));
-            builder.setConcurrentRequests(this._esConf.getParallel());
-            builder.setFlushInterval(TimeValue.timeValueSeconds(2L));
-            builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(2L), 3));
-            this._bulkProcessor = builder.build();
+            builder.setBulkActions(_esConf.getBatch());
+            builder.setBulkSize(new ByteSizeValue(_esConf.getBufferWriteSize(), ByteSizeUnit.MB));
+            builder.setConcurrentRequests(_esConf.getParallel());
+            builder.setFlushInterval(TimeValue.timeValueSeconds(_esConf.getBufferFlushInterval()));
+            builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(_esConf.getBackOffSec()), _esConf.getBackOffRetries()));
+            _bulkProcessor = builder.build();
+            _bulkPrssLastInitTime = System.currentTimeMillis();
         } catch (Exception e) {
             log.error("", e);
-            TimeUtil.sleepSec(1);
-            loadProcessor();
+            _reqSuss = false;
         }
     }
 
@@ -594,27 +646,29 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docs, "docs can not be null");
-        loadProcessor();
         try {
+            loadProcessor(false);
             for (DocData doc : docs) {
                 Map<String, Object> objectMap = doc.toMap();
                 docWrite(indexName, docType, doc, objectMap);
             }
         } catch (Throwable e) {
             log.error("", e);
-        } finally {
-            _bulkProcessor.flush();
-            TimeUtil.sleepMill(_esConf.getBufferFlushWaitMill());
         }
     }
 
-    private void docWrite(String indexName, String docType, DocData doc, Map<String, Object> objectMap) {
+    private void docWrite(String indexName, String docType, DocData doc, Map<String, Object> objectMap) throws IllegalAccessException, BulkWriteException {
         UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                 .upsert(objectMap).doc(objectMap);
         request.retryOnConflict(2);
         request.waitForActiveShards(1);
         request.timeout(TimeValue.timeValueSeconds(_esConf.getReqWriteWaitMill()));
-        _bulkProcessor.add(request);
+        TimeUtil.nullSleepSec(_bulkProcessorField, this, 12, _esConf.getReqFailRetryWaitSec() / 10);
+        if (_bulkProcessor == null) {
+            throw new BulkWriteException("_bulkProcessor is null!");
+        } else {
+            _bulkProcessor.add(request);
+        }
     }
 
     /**
@@ -630,8 +684,8 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(doc, "doc can not be null");
-        loadProcessor();
         try {
+            loadProcessor(false);
             Map<String, Object> objectMap = doc.toMap();
             docWrite(indexName, docType, doc, objectMap);
         } catch (Throwable e) {
@@ -655,21 +709,19 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param docType
      * @param docIds
      */
-    public void asyncBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
+    public void asyncBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws IllegalAccessException, BulkWriteException {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docIds, "docIds can not be null");
-        loadProcessor();
-        try {
-            docIds.forEach(id -> {
-                DeleteRequest request = new DeleteRequest(indexName, docType, id);
-                request.waitForActiveShards(1);
-                _bulkProcessor.add(request);
-            });
-        } catch (Exception e) {
-            log.error("", e);
-        } finally {
-            this._bulkProcessor.flush();
+        loadProcessor(false);
+        for (String id : docIds) {
+            DeleteRequest request = new DeleteRequest(indexName, docType, id);
+            request.waitForActiveShards(1);
+            TimeUtil.nullSleepSec(_bulkProcessorField, this, 12, _esConf.getReqFailRetryWaitSec() / 10);
+            if (_bulkProcessor == null) {
+                throw new BulkWriteException("_bulkProcessor is null!");
+            }
+            _bulkProcessor.add(request);
         }
     }
 
@@ -737,9 +789,15 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     @Override
     public void close() {
         try {
-            if (this._bulkProcessor != null) {
-                this._bulkProcessor.awaitClose(5, TimeUnit.SECONDS);
+            if (_bulkProcessor != null) {
+                _bulkProcessor.flush();
+                _bulkProcessor.awaitClose(_esConf.getAwaitCloseSec(), TimeUnit.SECONDS);
             }
+            while (!(_failedReqs.isEmpty() && _reqSuss)) {
+                TimeUtil.sleepSec(1);
+            }
+            _bulkProcessor.flush();
+            _close = true;
             if (this._client != null) {
                 this._client.close();
             }

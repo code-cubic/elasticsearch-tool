@@ -2,6 +2,7 @@ package com.codecubic.util;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -67,6 +68,16 @@ public class TimeUtil {
             Thread.sleep(mill);
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * 判断对象是否为null，是null则睡眠sec秒，最多睡眠num次
+     */
+    public static void nullSleepSec(Field field, Object obj, int num, int sec) throws IllegalAccessException {
+        while (field.get(obj) == null && num > 0) {
+            sleepSec(sec);
+            num--;
         }
     }
 }

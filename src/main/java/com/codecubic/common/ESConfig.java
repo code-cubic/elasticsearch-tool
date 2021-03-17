@@ -8,7 +8,7 @@ import java.io.Serializable;
 public class ESConfig implements Serializable {
     private String httpHostInfo;
     private Integer batch = 100;
-    private Integer parallel = 2;
+    private Integer parallel = 10;
     private Long bufferWriteSize = 10L;
     private Integer connectTimeoutMillis = 10000;
     private Integer socketTimeoutMillis = 30000;
@@ -16,6 +16,10 @@ public class ESConfig implements Serializable {
     private Integer maxConnectPerRoute = 5;
     private Integer maxConnectTotal = 10;
     private Integer ioThreadCount = 2;
+    private Long bufferFlushInterval = 2L;
+    private Long backOffSec = 2L;
+    private Integer backOffRetries = 3;
+    private Integer reqFailRetryWaitSec = 30;
     /**
      * es索引写入数据，等待关闭秒数
      */

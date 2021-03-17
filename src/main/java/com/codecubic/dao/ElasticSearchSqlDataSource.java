@@ -26,7 +26,7 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;
 
-    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException {
+    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException, NoSuchFieldException {
         super(config);
         this._esConf = config;
         String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");

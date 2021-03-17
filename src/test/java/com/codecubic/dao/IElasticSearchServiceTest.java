@@ -26,6 +26,8 @@ class IElasticSearchServiceTest {
             esSqlServ = new ElasticSearchSqlDataSource(esConfig);
         } catch (ESInitException e) {
             e.printStackTrace();
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
         }
     }
 
@@ -116,6 +118,13 @@ class IElasticSearchServiceTest {
         });
     }
 
+    @Order(3)
+    @Test
+    void getIndexSchema02() {
+        IndexInfo indexInfo = esServ.getIndexSchema("cpp_cpp_a_cid_user_label_20210315", "_doc");
+        Assertions.assertEquals("cpp_cpp_a_cid_user_label_20210315", indexInfo.getName());
+        Assertions.assertEquals("_doc", indexInfo.getType());
+    }
     @Order(4)
     @Test
     void asyncUpsert() {
@@ -187,7 +196,7 @@ class IElasticSearchServiceTest {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal","nested_test.prd","nested_test.bal"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(40, doc.getValInt("age"));
+        Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
 
     }
@@ -198,7 +207,7 @@ class IElasticSearchServiceTest {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(40, doc.getValInt("age"));
+        Assertions.assertEquals(20, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
@@ -252,7 +261,7 @@ class IElasticSearchServiceTest {
         Assertions.assertTrue(list.size() > 0);
         list.forEach(map -> {
             Assertions.assertEquals(2, map.size());
-            Assertions.assertEquals(1, map.get("ct"));
+            Assertions.assertEquals(2, map.get("ct"));
             Assertions.assertEquals(20, map.get("age"));
         });
     }
