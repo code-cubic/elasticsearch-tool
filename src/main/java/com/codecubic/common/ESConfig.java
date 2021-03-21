@@ -19,7 +19,7 @@ public class ESConfig implements Serializable {
     private Long bufferFlushInterval = 2L;
     private Long backOffSec = 2L;
     private Integer backOffRetries = 3;
-    private Integer reqFailRetryWaitSec = connectTimeoutMillis/3000;
+    private Integer reqFailRetryWaitSec = 15;
     /**
      * es索引写入数据，等待关闭秒数
      */

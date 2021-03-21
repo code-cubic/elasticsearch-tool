@@ -54,6 +54,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
@@ -73,6 +74,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     protected Long _tmpBuffSize;
     protected int _tmpBatchSize;
     protected volatile boolean _close = false;
+    private long _reqFailedCnt;
 
     protected synchronized void initClient() throws ESInitException {
         if (_client != null) {
@@ -132,9 +134,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         _bulkProcessorField.setAccessible(true);
 
         try {
+            _reqFailedCnt = _failedReqs.size();
             CompletableFuture.supplyAsync(() -> {
                 while (!_close) {
-                    if (!_reqSuss && (System.currentTimeMillis() - _bulkPrssLastInitTime) > _esConf.getReqFailRetryWaitSec() * 1000) {
+                    if ((_reqFailedCnt <= _failedReqs.size() || _bulkProcessor == null) && !_reqSuss && (System.currentTimeMillis() - _bulkPrssLastInitTime) > _esConf.getReqFailRetryWaitSec() * 1000) {
+                        _reqFailedCnt = _failedReqs.size();
                         log.info("reqFailed retry start");
                         try {
                             _tmpBuffSize = _tmpBuffSize / 3;
@@ -146,13 +150,10 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                                 _esConf.setBatch(_tmpBatchSize);
                             }
                             _bulkProcessor = null;
-                            if (!_failedReqs.isEmpty()) {
-                                _reqSuss = true;
-                            }
                             initClient();
                             loadProcessor(true);
 
-                        } catch (Exception e) {
+                        } catch (Throwable e) {
                             log.error("", e);
                         }
                     }
@@ -166,23 +167,28 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             }));
 
             CompletableFuture.supplyAsync(() -> {
-                while (!_close) {
-                    while (!_failedReqs.isEmpty()) {
-                        try {
-                            for (int i = 0; i < _failedReqs.size(); ) {
-                                while (_bulkProcessor == null) {
-                                    TimeUtil.sleepSec(2);
-                                }
-                                _bulkProcessor.add(_failedReqs.remove(0));
+                while (!_close || !_failedReqs.isEmpty()) {
+                    try {
+                        int size = _failedReqs.size();
+                        size = size > 10000 ? 10000 : size;
+                        for (int i = 0; i < size; i++) {
+                            while (_bulkProcessor == null) {
+                                TimeUtil.sleepSec(2);
                             }
-                        } catch (Exception e) {
-//                            log.error("", e);
+
+//                            if (_failedReqs.isEmpty()) {
+//                                break;
+//                            }
+                            _bulkProcessor.add(_failedReqs.get(0));
+                            _failedReqs.remove(0);
                         }
+                    } catch (Throwable e) {
+//                            log.error("", e);
                     }
+                    TimeUtil.sleepSec(5);
                     if (_failedReqs.isEmpty()) {
                         _reqSuss = true;
                     }
-                    TimeUtil.sleepSec(2);
                 }
                 return null;
             }, Executors.newSingleThreadExecutor()).exceptionally((throwable -> {
@@ -618,20 +624,27 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
             @Override
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
+                ArrayList<String> retryIds = new ArrayList<>();
                 for (BulkItemResponse bulkItemResponse : response) {
                     if (bulkItemResponse.isFailed()) {
                         int status = bulkItemResponse.status().getStatus();
                         if (429 == status) {
-                            _bulkProcessor = null;
-                            _failedReqs.addAll(request.requests());
-                            _reqSuss = false;
-                            log.warn("get 429 status,retry this batch!");
+                            String id = bulkItemResponse.getId();
+                            retryIds.add(id);
+
                         } else {
                             log.error(response.buildFailureMessage());
                             log.error("batch partial failure,executionId:{}", executionId);
                         }
                     }
                 }
+                List<DocWriteRequest<?>> collect = request.requests().stream().filter(req -> retryIds.contains(req.id())).collect(Collectors.toList());
+                if (!collect.isEmpty()) {
+                    _bulkProcessor = null;
+                    _failedReqs.addAll(collect);
+                    _reqSuss = false;
+                }
+
             }
 
             @Override
@@ -686,7 +699,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         request.retryOnConflict(2);
         request.waitForActiveShards(1);
         request.timeout(TimeValue.timeValueSeconds(_esConf.getReqWriteWaitMill()));
-        TimeUtil.nullSleepSec(_bulkProcessorField, this, 12, _esConf.getReqFailRetryWaitSec() / 10);
+        TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
         if (_bulkProcessor == null) {
             throw new BulkWriteException("_bulkProcessor is null!");
         } else {
@@ -740,7 +753,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         for (String id : docIds) {
             DeleteRequest request = new DeleteRequest(indexName, docType, id);
             request.waitForActiveShards(1);
-            TimeUtil.nullSleepSec(_bulkProcessorField, this, 12, _esConf.getReqFailRetryWaitSec() / 10);
+            TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
             if (_bulkProcessor == null) {
                 throw new BulkWriteException("_bulkProcessor is null!");
             }
@@ -811,12 +824,14 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     @Override
     public void close() {
+        TimeUtil.sleepSec(5);
         try {
             if (_bulkPrssLastInitTime != null) {
                 while (!(_failedReqs.isEmpty() && _reqSuss)) {
                     TimeUtil.sleepSec(1);
                 }
                 _bulkProcessor.flush();
+                _bulkProcessor.awaitClose(3, TimeUnit.SECONDS);
                 _close = true;
             }
             if (this._client != null) {
