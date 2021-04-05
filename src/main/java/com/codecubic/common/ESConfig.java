@@ -30,7 +30,7 @@ public class ESConfig implements Serializable {
     /**
      * 建议不要小于500毫秒
      */
-    private Integer bufferFlushWaitMill = 1000;
+    private Integer bufferFlushWaitMill = 500;
 
     private Integer reqWriteWaitMill = 10000;
 

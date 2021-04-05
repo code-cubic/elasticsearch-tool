@@ -1,5 +1,4 @@
-#httpHostInfo: "192.168.99.10:9200"
-httpHostInfo: "10.4.86.12:9200,10.4.86.13:9200"
+httpHostInfo: "192.168.99.20:9200"
 batch: 10
 parallel: 1
 bufferWriteSize: 2

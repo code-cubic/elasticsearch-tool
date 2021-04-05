@@ -125,6 +125,7 @@ class IElasticSearchServiceTest {
         Assertions.assertEquals("cpp_cpp_a_cid_user_label_20210315", indexInfo.getName());
         Assertions.assertEquals("_doc", indexInfo.getType());
     }
+
     @Order(4)
     @Test
     void asyncUpsert() {
@@ -150,12 +151,12 @@ class IElasticSearchServiceTest {
             doc.addField(new FieldData("name", "姓名" + i));
             JSONArray nestedTestVals = new JSONArray();
             JSONObject val1 = new JSONObject();
-            val1.put("prd","hhh");
-            val1.put("bal",2000);
+            val1.put("prd", "hhh");
+            val1.put("bal", 2000);
             nestedTestVals.add(val1);
             JSONObject val2 = new JSONObject();
-            val2.put("prd","hhh2");
-            val2.put("bal",50.55);
+            val2.put("prd", "hhh2");
+            val2.put("bal", 50.55);
             nestedTestVals.add(val2);
             doc.addField(new FieldData("nested_test", nestedTestVals));
             docDatas.add(doc);
@@ -193,7 +194,7 @@ class IElasticSearchServiceTest {
     @Order(10)
     @Test
     void getDoc() {
-        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal","nested_test.prd","nested_test.bal"});
+        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal", "nested_test.prd", "nested_test.bal"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
         Assertions.assertEquals(20, doc.getValInt("age"));
@@ -215,11 +216,12 @@ class IElasticSearchServiceTest {
     @Order(12)
     @Test
     void getDoc3() {
-        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000002", new String[]{"age", "bal", "load_bal","nested_test","nested_test2"});
+        DocData doc = esServ.getDoc("index_20201101", "_doc", "100000002", new String[]{"age", "bal", "load_bal", "nested_test", "nested_test2"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000002", doc.getId());
 
     }
+
     @Order(20)
     @Test
     void count() {
@@ -316,6 +318,17 @@ class IElasticSearchServiceTest {
     @Test
     void existAlias() {
         Assertions.assertTrue(esServ.existAlias("index_20201101", "index_b"));
+    }
+
+    @Order(39)
+    @Test
+    void asyBulkDelDoc() {
+        Assertions.assertEquals(2, esServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+        esServ.asyBulkDelDoc("index_20201101", "index_b", new ArrayList() {{
+            add("100000002");
+            add("100000003");
+        }});
+        Assertions.assertEquals(0, esServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
     }
 
     @Order(998)

@@ -21,7 +21,7 @@ import java.util.Map;
  * @author code-cubic
  */
 @Slf4j
-@SnapShot("预览版")
+@SnapShot
 public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
     private HttpClientHandler _sqlHandler;

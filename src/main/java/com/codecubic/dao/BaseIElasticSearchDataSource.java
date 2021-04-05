@@ -65,6 +65,7 @@ import java.util.stream.Collectors;
 public class BaseIElasticSearchDataSource implements IElasticSearchService, Closeable {
 
     protected ESConfig _esConf;
+
     protected RestHighLevelClient _client;
     protected volatile BulkProcessor _bulkProcessor;
     protected Long _bulkPrssLastInitTime;
@@ -74,7 +75,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     protected Long _tmpBuffSize;
     protected int _tmpBatchSize;
     protected volatile boolean _close = false;
-    private long _reqFailedCnt;
+    protected long _reqFailedCnt;
 
     protected synchronized void initClient() throws ESInitException {
         if (_client != null) {
@@ -175,15 +176,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                             while (_bulkProcessor == null) {
                                 TimeUtil.sleepSec(2);
                             }
-
-//                            if (_failedReqs.isEmpty()) {
-//                                break;
-//                            }
                             _bulkProcessor.add(_failedReqs.get(0));
                             _failedReqs.remove(0);
                         }
                     } catch (Throwable e) {
-//                            log.error("", e);
+                        log.error("", e);
                     }
                     TimeUtil.sleepSec(5);
                     if (_failedReqs.isEmpty()) {
@@ -608,7 +605,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         return new DocData();
     }
 
-    private synchronized void loadProcessor(boolean reload) {
+    protected synchronized void loadProcessor(boolean reload) {
         if (!reload && _bulkPrssLastInitTime != null) {
             return;
         }
@@ -671,14 +668,14 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     /**
      * 异步批量数据写入或更新
-     * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
      * @param docType
      * @param docs
+     * @return true:提交成功（不代表执行成功），false:提交失败
      */
     @Override
-    public void asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
+    public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docs, "docs can not be null");
@@ -690,10 +687,12 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             }
         } catch (Throwable e) {
             log.error("", e);
+            return false;
         }
+        return true;
     }
 
-    private void docWrite(String indexName, String docType, DocData doc, Map<String, Object> objectMap) throws IllegalAccessException, BulkWriteException {
+    protected void docWrite(String indexName, String docType, DocData doc, Map<String, Object> objectMap) throws IllegalAccessException, BulkWriteException {
         UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                 .upsert(objectMap).doc(objectMap);
         request.retryOnConflict(2);
@@ -709,14 +708,14 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     /**
      * 异步数据写入或更新
-     * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
      * @param docType
      * @param doc
+     * @return true:提交成功（不代表执行成功），false:提交失败
      */
     @Override
-    public void asyncUpsert(String indexName, String docType, DocData doc) {
+    public boolean asyncUpsert(String indexName, String docType, DocData doc) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(doc, "doc can not be null");
@@ -726,7 +725,9 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             docWrite(indexName, docType, doc, objectMap);
         } catch (Throwable e) {
             log.error("", e);
+            return false;
         }
+        return true;
     }
 
     @Override
@@ -739,26 +740,29 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     /**
      * 异步批量数据删除，根据doc id进行删除
-     * 适合离线批处理场景，不适合实时场景
      *
      * @param indexName
      * @param docType
      * @param docIds
+     * @return true:提交成功（不代表执行成功），false:提交失败
      */
-    public void asyncBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws IllegalAccessException, BulkWriteException {
+    public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docIds, "docIds can not be null");
         loadProcessor(false);
-        for (String id : docIds) {
-            DeleteRequest request = new DeleteRequest(indexName, docType, id);
-            request.waitForActiveShards(1);
-            TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
-            if (_bulkProcessor == null) {
-                throw new BulkWriteException("_bulkProcessor is null!");
+        try {
+            for (String id : docIds) {
+                DeleteRequest request = new DeleteRequest(indexName, docType, id);
+                request.waitForActiveShards(1);
+                TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
+                _bulkProcessor.add(request);
             }
-            _bulkProcessor.add(request);
+        } catch (Exception e) {
+            log.error("", e);
+            return false;
         }
+        return true;
     }
 
 
@@ -768,7 +772,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
      * @param indexName
      * @param docType
      * @param conditions
-     * @return
+     * @return true:删除成功，false:删除失败
      */
     @Override
     public boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) {
@@ -796,7 +800,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             _client.deleteByQueryAsync(request, RequestOptions.DEFAULT, new ActionListener<BulkByScrollResponse>() {
                 @Override
                 public void onResponse(BulkByScrollResponse bulkResponse) {
-
+                    //
                 }
 
                 @Override
@@ -824,21 +828,24 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     @Override
     public void close() {
-        TimeUtil.sleepSec(5);
         try {
             if (_bulkPrssLastInitTime != null) {
+                TimeUtil.sleepSec(5);
                 while (!(_failedReqs.isEmpty() && _reqSuss)) {
                     TimeUtil.sleepSec(1);
                 }
-                _bulkProcessor.flush();
                 _bulkProcessor.awaitClose(3, TimeUnit.SECONDS);
                 _close = true;
             }
-            if (this._client != null) {
-                this._client.close();
-            }
         } catch (Exception e) {
-            log.error("", e);
+            //
+        }
+        if (this._client != null) {
+            try {
+                this._client.close();
+            } catch (IOException e) {
+                //
+            }
         }
     }
 

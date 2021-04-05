@@ -25,9 +25,9 @@ public interface IElasticSearchService {
 
     DocData getDoc(String indexName, String docType, String id, String[] fields);
 
-    void asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
+    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
 
-    void asyncUpsert(String indexName, String docType, DocData doc);
+    boolean asyncUpsert(String indexName, String docType, DocData doc);
 
     void flushWriteBuffer();
 
@@ -46,6 +46,8 @@ public interface IElasticSearchService {
     boolean existAlias(String indexName, String indexAlias);
 
     boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias);
+
+    boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
 
     RestHighLevelClient getClient();
 
