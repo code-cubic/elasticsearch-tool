@@ -328,6 +328,7 @@ class IElasticSearchServiceTest {
             add("100000002");
             add("100000003");
         }});
+        esServ.flushWriteBuffer();
         TimeUtil.sleepSec(5);
         Assertions.assertEquals(0, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
     }
