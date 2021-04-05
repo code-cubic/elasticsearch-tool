@@ -324,7 +324,7 @@ class IElasticSearchServiceTest {
     @Test
     void asyBulkDelDoc() {
         Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
-        esServ.asyBulkDelDoc("index_20201101", "index_b", new ArrayList() {{
+        esServ.asyBulkDelDoc("index_20201101", "_doc", new ArrayList() {{
             add("100000002");
             add("100000003");
         }});
