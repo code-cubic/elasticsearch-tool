@@ -121,8 +121,8 @@ class IElasticSearchServiceTest {
     @Order(3)
     @Test
     void getIndexSchema02() {
-        IndexInfo indexInfo = esServ.getIndexSchema("cpp_cpp_a_cid_user_label_20210315", "_doc");
-        Assertions.assertEquals("cpp_cpp_a_cid_user_label_20210315", indexInfo.getName());
+        IndexInfo indexInfo = esServ.getIndexSchema("index_20201101", "_doc");
+        Assertions.assertEquals("index_20201101", indexInfo.getName());
         Assertions.assertEquals("_doc", indexInfo.getType());
     }
 
@@ -323,12 +323,12 @@ class IElasticSearchServiceTest {
     @Order(39)
     @Test
     void asyBulkDelDoc() {
-        Assertions.assertEquals(2, esServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+        Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
         esServ.asyBulkDelDoc("index_20201101", "index_b", new ArrayList() {{
             add("100000002");
             add("100000003");
         }});
-        Assertions.assertEquals(0, esServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+        Assertions.assertEquals(0, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
     }
 
     @Order(998)
