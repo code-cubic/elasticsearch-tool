@@ -174,7 +174,7 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                         size = size > 10000 ? 10000 : size;
                         for (int i = 0; i < size; i++) {
                             while (_bulkProcessor == null) {
-                                TimeUtil.sleepSec(2);
+                                TimeUtil.sleepSec(1);
                             }
                             _bulkProcessor.add(_failedReqs.get(0));
                             _failedReqs.remove(0);
@@ -182,10 +182,10 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                     } catch (Throwable e) {
                         log.error("", e);
                     }
-                    TimeUtil.sleepSec(5);
                     if (_failedReqs.isEmpty()) {
                         _reqSuss = true;
                     }
+                    TimeUtil.sleepSec(1);
                 }
                 return null;
             }, Executors.newSingleThreadExecutor()).exceptionally((throwable -> {
@@ -590,6 +590,9 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
             GetResponse response = this._client.get(getRequest, RequestOptions.DEFAULT);
             Map<String, Object> source = response.getSource();
             DocData docData = new DocData();
+            if (source == null) {
+                return docData;
+            }
             docData.setId(id);
             docData.setVersion(response.getVersion());
             source.forEach((k, v) -> {

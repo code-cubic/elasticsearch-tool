@@ -15,10 +15,10 @@ import java.util.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class IElasticSearchServiceTest {
 
-    private IElasticSearchService esServ;
-    private IElasticSearchService esSqlServ;
+    private static IElasticSearchService esServ;
+    private static IElasticSearchService esSqlServ;
 
-    {
+    static {
         Yaml yaml = new Yaml();
         ESConfig esConfig = yaml.loadAs(IElasticSearchService.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
         try {
@@ -197,7 +197,7 @@ class IElasticSearchServiceTest {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", new String[]{"age", "bal", "load_bal", "nested_test.prd", "nested_test.bal"});
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(20, doc.getValInt("age"));
+        Assertions.assertEquals(40, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
 
     }
@@ -208,7 +208,7 @@ class IElasticSearchServiceTest {
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
         Assertions.assertNotNull(doc);
         Assertions.assertEquals("100000001", doc.getId());
-        Assertions.assertEquals(20, doc.getValInt("age"));
+        Assertions.assertEquals(40, doc.getValInt("age"));
         Assertions.assertEquals(20, doc.getValDouble("bal"));
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
@@ -263,7 +263,7 @@ class IElasticSearchServiceTest {
         Assertions.assertTrue(list.size() > 0);
         list.forEach(map -> {
             Assertions.assertEquals(2, map.size());
-            Assertions.assertEquals(2, map.get("ct"));
+            Assertions.assertEquals(1, map.get("ct"));
             Assertions.assertEquals(20, map.get("age"));
         });
     }
