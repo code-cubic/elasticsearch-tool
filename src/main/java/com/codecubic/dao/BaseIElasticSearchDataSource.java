@@ -75,7 +75,11 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
     protected Long _tmpBuffSize;
     protected int _tmpBatchSize;
     protected volatile boolean _close = false;
+<<<<<<< HEAD
     protected long _reqFailedCnt;
+=======
+    private long _reqFailedCnt;
+>>>>>>> 8522077dcaaa6c7c3d6266ef14eea6f57d413951
 
     protected synchronized void initClient() throws ESInitException {
         if (_client != null) {
@@ -176,11 +180,22 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
                             while (_bulkProcessor == null) {
                                 TimeUtil.sleepSec(2);
                             }
+<<<<<<< HEAD
+=======
+
+//                            if (_failedReqs.isEmpty()) {
+//                                break;
+//                            }
+>>>>>>> 8522077dcaaa6c7c3d6266ef14eea6f57d413951
                             _bulkProcessor.add(_failedReqs.get(0));
                             _failedReqs.remove(0);
                         }
                     } catch (Throwable e) {
+<<<<<<< HEAD
                         log.error("", e);
+=======
+//                            log.error("", e);
+>>>>>>> 8522077dcaaa6c7c3d6266ef14eea6f57d413951
                     }
                     TimeUtil.sleepSec(5);
                     if (_failedReqs.isEmpty()) {
@@ -751,12 +766,21 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docIds, "docIds can not be null");
         loadProcessor(false);
+<<<<<<< HEAD
         try {
             for (String id : docIds) {
                 DeleteRequest request = new DeleteRequest(indexName, docType, id);
                 request.waitForActiveShards(1);
                 TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
                 _bulkProcessor.add(request);
+=======
+        for (String id : docIds) {
+            DeleteRequest request = new DeleteRequest(indexName, docType, id);
+            request.waitForActiveShards(1);
+            TimeUtil.nullSleepSec(_bulkProcessorField, this, 30, _esConf.getReqFailRetryWaitSec() / 10);
+            if (_bulkProcessor == null) {
+                throw new BulkWriteException("_bulkProcessor is null!");
+>>>>>>> 8522077dcaaa6c7c3d6266ef14eea6f57d413951
             }
         } catch (Exception e) {
             log.error("", e);
@@ -828,12 +852,17 @@ public class BaseIElasticSearchDataSource implements IElasticSearchService, Clos
 
     @Override
     public void close() {
+        TimeUtil.sleepSec(5);
         try {
             if (_bulkPrssLastInitTime != null) {
                 TimeUtil.sleepSec(5);
                 while (!(_failedReqs.isEmpty() && _reqSuss)) {
                     TimeUtil.sleepSec(1);
                 }
+<<<<<<< HEAD
+=======
+                _bulkProcessor.flush();
+>>>>>>> 8522077dcaaa6c7c3d6266ef14eea6f57d413951
                 _bulkProcessor.awaitClose(3, TimeUnit.SECONDS);
                 _close = true;
             }
