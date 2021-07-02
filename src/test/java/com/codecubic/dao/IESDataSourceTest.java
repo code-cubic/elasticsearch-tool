@@ -230,6 +230,7 @@ class IESDataSourceTest {
     @Order(20)
     @Test
     void count() {
+        esServ.flush();
         Assertions.assertEquals(20, esServ.count("index_20201101", "_doc", null));
     }
 
@@ -261,7 +262,7 @@ class IESDataSourceTest {
     @Order(25)
     @Test
     void query() {
-        TimeUtil.sleepSec(WAIT_FLUSH_SEC);
+        esServ.flush();
         String sql = "select age,count(1) as ct from index_20201101 where age = 20 group by age";
         List<Map<String, Object>> list = esSqlServ.query(sql);
         Assertions.assertNotNull(list);

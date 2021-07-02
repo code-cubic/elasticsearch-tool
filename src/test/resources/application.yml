@@ -1,6 +1,5 @@
 httpHostInfo: "192.168.99.20:9200"
 batch: -1
-parallel: 2
 bufferWriteSize: 1
 connectTimeoutMillis: 10000
 socketTimeoutMillis: 30000

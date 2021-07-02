@@ -46,4 +46,7 @@ public class ESConfig implements Serializable {
         }
     }
 
+    public void setBufferFlushInterval(Long bufferFlushInterval) throws ConfigErrExcp {
+        throw new ConfigErrExcp("can not setting bufferFlushInterval!");
+    }
 }

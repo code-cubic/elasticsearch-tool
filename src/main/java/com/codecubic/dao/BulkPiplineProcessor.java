@@ -88,7 +88,7 @@ public class BulkPiplineProcessor implements Closeable {
             builder.setBulkActions(this.esConfig.getBatch());
             builder.setBulkSize(new ByteSizeValue(this.esConfig.getBufferWriteSize(), ByteSizeUnit.MB));
             builder.setConcurrentRequests(this.esConfig.getParallel());
-            builder.setFlushInterval(TimeValue.timeValueSeconds(this.esConfig.getBufferFlushInterval()));
+//            builder.setFlushInterval(TimeValue.timeValueSeconds(this.esConfig.getBufferFlushInterval()));
             builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(this.esConfig.getBackOffSec()), this.esConfig.getBackOffRetries()));
             this.bulkProcessor = builder.build();
         } catch (Exception e) {
