@@ -35,4 +35,6 @@ public class ESConfig implements Serializable {
     private Integer reqWriteWaitMill = 10000;
 
 
+
+
 }

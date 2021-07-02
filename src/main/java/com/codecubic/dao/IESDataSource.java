@@ -2,14 +2,16 @@ package com.codecubic.dao;
 
 import com.codecubic.common.DocData;
 import com.codecubic.common.IndexInfo;
+import com.codecubic.exception.BulkProcessorInitExcp;
 import org.elasticsearch.client.RestHighLevelClient;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public interface IElasticSearchService {
+public interface IESDataSource {
 
     boolean createIndex(String indexName, String source);
 
@@ -25,15 +27,11 @@ public interface IElasticSearchService {
 
     DocData getDoc(String indexName, String docType, String id, String[] fields);
 
-    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
-
-    boolean asyncUpsert(String indexName, String docType, DocData doc);
-
-    void flushWriteBuffer();
+    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) throws BulkProcessorInitExcp;
 
     long count(String indexName, String docType, Map<String, Object> conditions);
 
-    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
+    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) throws BulkProcessorInitExcp;
 
     List<Map<String, Object>> query(String sql);
 
@@ -47,7 +45,9 @@ public interface IElasticSearchService {
 
     boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias);
 
-    boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
+    boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws BulkProcessorInitExcp;
+
+    void upsrt(String indexName, String docType, DocData doc) throws IOException;
 
     RestHighLevelClient getClient();
 

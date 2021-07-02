@@ -3,28 +3,31 @@ package com.codecubic.dao;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.*;
-import com.codecubic.exception.ESInitException;
+import com.codecubic.exception.BulkProcessorInitExcp;
+import com.codecubic.exception.ESCliInitExcep;
 import com.codecubic.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.yaml.snakeyaml.Yaml;
 
+import java.io.IOException;
 import java.util.*;
 
 @Slf4j
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class IElasticSearchServiceTest {
+class IESDataSourceTest {
 
-    private static IElasticSearchService esServ;
-    private static IElasticSearchService esSqlServ;
+    private static IESDataSource esServ;
+    private static IESDataSource esSqlServ;
+
 
     static {
         Yaml yaml = new Yaml();
-        ESConfig esConfig = yaml.loadAs(IElasticSearchService.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
+        ESConfig esConfig = yaml.loadAs(IESDataSource.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
         try {
-            esServ = new BaseIElasticSearchDataSource(esConfig);
-            esSqlServ = new ElasticSearchSqlDataSource(esConfig);
-        } catch (ESInitException e) {
+            esServ = new BaseESDataSource(esConfig);
+            esSqlServ = new ESDataSource(esConfig);
+        } catch (ESCliInitExcep e) {
             e.printStackTrace();
         } catch (NoSuchFieldException e) {
             e.printStackTrace();
@@ -128,17 +131,17 @@ class IElasticSearchServiceTest {
 
     @Order(4)
     @Test
-    void asyncUpsert() {
+    void asyncUpsert() throws IOException {
         DocData doc = new DocData();
         doc.setId("100000001");
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 10));
-        esServ.asyncUpsert("index_20201101", "_doc", doc);
+        esServ.upsrt("index_20201101", "_doc", doc);
     }
 
     @Order(4)
     @Test
-    void asyncBulkUpsert2() {
+    void asyncBulkUpsert2() throws BulkProcessorInitExcp {
         ArrayList<DocData> docDatas = new ArrayList<>();
         for (int i = 2; i < 21; i++) {
             DocData doc = new DocData();
@@ -162,11 +165,12 @@ class IElasticSearchServiceTest {
             docDatas.add(doc);
         }
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
+        TimeUtil.sleepSec(3);
     }
 
     @Order(5)
     @Test
-    void asyncBulkUpsert3() {
+    void asyncBulkUpsert3() throws BulkProcessorInitExcp {
         ArrayList<DocData> docDatas = new ArrayList<>();
         DocData doc = new DocData();
         doc.setId("100000001");
@@ -176,19 +180,19 @@ class IElasticSearchServiceTest {
         doc.addField(new FieldData("name", "姓名"));
         docDatas.add(doc);
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
+        TimeUtil.sleepSec(3);
     }
 
     @Order(6)
     @Test
-    void asyncBulkUpsert4() {
+    void asyncBulkUpsert4() throws IOException {
         DocData doc = new DocData();
         doc.setId("100000001");
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 40));
         doc.addField(new FieldData("name", "姓名"));
-        esServ.asyncUpsert("index_20201101", "_doc", doc);
-        esServ.flushWriteBuffer();
-        TimeUtil.sleepSec(2);
+        esServ.upsrt("index_20201101", "_doc", doc);
+        TimeUtil.sleepSec(3);
     }
 
     @Order(10)
@@ -270,7 +274,7 @@ class IElasticSearchServiceTest {
 
     @Order(30)
     @Test
-    void delByQuery() {
+    void delByQuery() throws BulkProcessorInitExcp {
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.putIfAbsent("load_bal", null);
         paramMap.putIfAbsent("cid", "100000001");
@@ -322,13 +326,12 @@ class IElasticSearchServiceTest {
 
     @Order(39)
     @Test
-    void asyBulkDelDoc() {
+    void asyBulkDelDoc() throws BulkProcessorInitExcp {
         Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
         esServ.asyBulkDelDoc("index_20201101", "_doc", new ArrayList() {{
             add("100000002");
             add("100000003");
         }});
-        esServ.flushWriteBuffer();
         TimeUtil.sleepSec(5);
         Assertions.assertEquals(0, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
     }

@@ -1,10 +1,11 @@
 package com.codecubic.dao;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.ESConfig;
 import com.codecubic.common.annotation.SnapShot;
-import com.codecubic.exception.ESInitException;
+import com.codecubic.exception.ESCliInitExcep;
 import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -16,26 +17,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 支持sql查询，所有sql查询方法均为非稳定版本
+ * support sql query
+ * snap version
  *
  * @author code-cubic
  */
 @Slf4j
 @SnapShot
-public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
+public class ESDataSource extends BaseESDataSource {
 
-    private HttpClientHandler _sqlHandler;
+    private HttpClientHandler sqlHandler;
 
-    public ElasticSearchSqlDataSource(ESConfig config) throws ESInitException, NoSuchFieldException {
+    public ESDataSource(ESConfig config) throws ESCliInitExcep, NoSuchFieldException {
         super(config);
-        this._esConf = config;
-        String[] hosts = StringUtils.split(this._esConf.getHttpHostInfo(), ",");
+        super.esConf = config;
+        String[] hosts = StringUtils.split(super.esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");
         String url = String.format("http://%s:%s/_xpack/sql", split[0], split[1]);
         RequestConfig conf = RequestConfig.custom()
-                .setSocketTimeout(this._esConf.getSocketTimeoutMillis())
-                .setConnectTimeout(this._esConf.getConnectTimeoutMillis()).build();
-        _sqlHandler = new HttpClientHandler(url, conf);
+                .setSocketTimeout(super.esConf.getSocketTimeoutMillis())
+                .setConnectTimeout(super.esConf.getConnectTimeoutMillis()).build();
+        this.sqlHandler = new HttpClientHandler(url, conf);
     }
 
 
@@ -47,9 +49,9 @@ public class ElasticSearchSqlDataSource extends BaseIElasticSearchDataSource {
 
         List<Map<String, Object>> result = new ArrayList<>();
         try {
-            HttpClientHandler.HandlerResponse response = _sqlHandler.httpPostDemo(json.toString(), ContentType.APPLICATION_JSON, null);
+            HttpClientHandler.HandlerResponse response = this.sqlHandler.httpPostDemo(json.toString(), ContentType.APPLICATION_JSON, null);
 
-            JSONObject responseJson = JSONObject.parseObject(response.getContent());
+            JSONObject responseJson = JSON.parseObject(response.getContent());
             JSONArray columns = responseJson.getJSONArray("columns");
             JSONArray rows = responseJson.getJSONArray("rows");
 
