@@ -529,6 +529,13 @@ public class BaseESDataSource implements IESDataSource, Closeable {
         this.client.update(request, RequestOptions.DEFAULT);
     }
 
+    @Override
+    public void flush() {
+        if (this.bulkPiplineProcessor != null) {
+            this.bulkPiplineProcessor.flush();
+        }
+    }
+
     private synchronized void loadBulkProcessor() throws BulkProcessorInitExcp {
         if (this.bulkPiplineProcessor == null) {
             this.bulkPiplineProcessor = new BulkPiplineProcessor(this.client, this.esConf);

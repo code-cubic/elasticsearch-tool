@@ -19,7 +19,7 @@ class IESDataSourceTest {
 
     private static IESDataSource esServ;
     private static IESDataSource esSqlServ;
-
+    private static final int WAIT_FLUSH_SEC = 4;
 
     static {
         Yaml yaml = new Yaml();
@@ -137,6 +137,7 @@ class IESDataSourceTest {
         doc.addField(new FieldData("cid", "100000001"));
         doc.addField(new FieldData("age", 10));
         esServ.upsrt("index_20201101", "_doc", doc);
+        esServ.flush();
     }
 
     @Order(4)
@@ -150,7 +151,7 @@ class IESDataSourceTest {
             doc.addField(new FieldData("cid", cid));
             doc.addField(new FieldData("age", i));
             doc.addField(new FieldData("bal", i * 1.5));
-            doc.addField(new FieldData("load_bal", 3));
+            doc.addField(new FieldData("load_bal", 3d));
             doc.addField(new FieldData("name", "姓名" + i));
             JSONArray nestedTestVals = new JSONArray();
             JSONObject val1 = new JSONObject();
@@ -165,7 +166,7 @@ class IESDataSourceTest {
             docDatas.add(doc);
         }
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
-        TimeUtil.sleepSec(3);
+        esServ.flush();
     }
 
     @Order(5)
@@ -180,7 +181,7 @@ class IESDataSourceTest {
         doc.addField(new FieldData("name", "姓名"));
         docDatas.add(doc);
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
-        TimeUtil.sleepSec(3);
+        esServ.flush();
     }
 
     @Order(6)
@@ -192,7 +193,7 @@ class IESDataSourceTest {
         doc.addField(new FieldData("age", 40));
         doc.addField(new FieldData("name", "姓名"));
         esServ.upsrt("index_20201101", "_doc", doc);
-        TimeUtil.sleepSec(3);
+        esServ.flush();
     }
 
     @Order(10)
@@ -260,7 +261,7 @@ class IESDataSourceTest {
     @Order(25)
     @Test
     void query() {
-        TimeUtil.sleepSec(2);
+        TimeUtil.sleepSec(WAIT_FLUSH_SEC);
         String sql = "select age,count(1) as ct from index_20201101 where age = 20 group by age";
         List<Map<String, Object>> list = esSqlServ.query(sql);
         Assertions.assertNotNull(list);
@@ -279,7 +280,7 @@ class IESDataSourceTest {
         paramMap.putIfAbsent("load_bal", null);
         paramMap.putIfAbsent("cid", "100000001");
         Assertions.assertTrue(esServ.delByQuery("index_20201101", "_doc", paramMap));
-        TimeUtil.sleepSec(2);
+        TimeUtil.sleepSec(WAIT_FLUSH_SEC);
         DocData doc = esServ.getDoc("index_20201101", "_doc", "100000001", null);
         Assertions.assertNull(doc.getId());
     }
@@ -332,8 +333,39 @@ class IESDataSourceTest {
             add("100000002");
             add("100000003");
         }});
-        TimeUtil.sleepSec(5);
+        esSqlServ.flush();
+        TimeUtil.sleepSec(WAIT_FLUSH_SEC);
         Assertions.assertEquals(0, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+    }
+
+    @Order(50)
+    @Test
+    void asyncBulkUpsert5() throws BulkProcessorInitExcp {
+        ArrayList<DocData> docDatas = new ArrayList<>();
+        for (int i = 1; i < 100001; i++) {
+            DocData doc = new DocData();
+            String cid = "20000000" + i;
+            doc.setId(cid);
+            doc.addField(new FieldData("cid", cid));
+            doc.addField(new FieldData("age", i));
+            doc.addField(new FieldData("bal", i * 1.5));
+            doc.addField(new FieldData("load_bal", 3d));
+            doc.addField(new FieldData("name", "姓名" + i));
+            JSONArray nestedTestVals = new JSONArray();
+            JSONObject val1 = new JSONObject();
+            val1.put("prd", "hhh");
+            val1.put("bal", 2000);
+            nestedTestVals.add(val1);
+            JSONObject val2 = new JSONObject();
+            val2.put("prd", "hhh2");
+            val2.put("bal", 50.55);
+            nestedTestVals.add(val2);
+            doc.addField(new FieldData("nested_test", nestedTestVals));
+            docDatas.add(doc);
+        }
+        esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
+        esServ.flush();
+        Assertions.assertEquals(100000, esSqlServ.query("select count(1) as ct from index_20201101 where cid  > 200000000").get(0).get("ct"));
     }
 
     @Order(998)

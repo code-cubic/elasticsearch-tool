@@ -18,14 +18,10 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 
 import java.io.Closeable;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Slf4j
 public class BulkPiplineProcessor implements Closeable {
@@ -39,6 +35,16 @@ public class BulkPiplineProcessor implements Closeable {
         this.esConfig = esConf;
         initBulkProcessor();
     }
+
+    public void flush() {
+        do {
+            this.bulkProcessor.flush();
+            retryWriteAll();
+            TimeUtil.sleepSec(this.esConfig.getAwaitCloseSec().intValue());
+        }
+        while (!this.lazyQueue.isEmpty());
+    }
+
 
     private static class RetryFailureListener implements BulkProcessor.Listener {
         private final List<DocWriteRequest> lazyQueue;
@@ -55,18 +61,16 @@ public class BulkPiplineProcessor implements Closeable {
 
         @Override
         public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
-            Stream<DocWriteRequest<?>> reqStreams = request.requests().stream();
             for (BulkItemResponse bulkItemResponse : response) {
                 int status = bulkItemResponse.status().getStatus();
-                DocWriteRequest<?> req = reqStreams.filter(e -> e.id().equals(bulkItemResponse.getId())).findFirst().get();
                 if (bulkItemResponse.isFailed()) {
+                    DocWriteRequest<?> req = request.requests().stream().filter(e -> e.id().equals(bulkItemResponse.getFailure().getId())).findFirst().get();
                     if (429 == status) {
                         this.lazyQueue.add(req);
                     }
                     log.error("status:{},doc id:{}", status, req.id());
                     continue;
                 }
-                log.debug("status:{},doc id:{}", status, req.id());
             }
 
         }
@@ -105,15 +109,15 @@ public class BulkPiplineProcessor implements Closeable {
         try {
             if (!this.lazyQueue.isEmpty()) {
                 log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
-                TimeUnit.SECONDS.sleep(this.esConfig.getReqWriteWaitMill());
+                TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
             }
             for (DocData doc : docs) {
                 Map<String, Object> objectMap = doc.toMap();
                 UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                         .upsert(objectMap).doc(objectMap);
-                request.retryOnConflict(2);
+                request.retryOnConflict(10);
                 request.waitForActiveShards(1);
-                request.timeout(TimeValue.timeValueSeconds(this.esConfig.getReqWriteWaitMill()));
+                request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
                 this.bulkProcessor.add(request);
             }
             retryWrite();
@@ -152,17 +156,32 @@ public class BulkPiplineProcessor implements Closeable {
             log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
             TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
         }
-        lazyQueue.forEach(this.bulkProcessor::add);
+        int i = 0;
+        Iterator<DocWriteRequest> item = lazyQueue.iterator();
+        while (item.hasNext() && i < 200) {
+            this.bulkProcessor.add(this.lazyQueue.get(0));
+            this.lazyQueue.remove(0);
+            i++;
+        }
+    }
+
+    private void retryWriteAll() {
+        if (!this.lazyQueue.isEmpty()) {
+            log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
+            TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
+        }
+        Iterator<DocWriteRequest> item = lazyQueue.iterator();
+        while (item.hasNext()) {
+            this.bulkProcessor.add(this.lazyQueue.get(0));
+            this.lazyQueue.remove(0);
+        }
     }
 
 
     @Override
     public void close() {
-        while (!lazyQueue.isEmpty()) {
-            retryWrite();
-        }
+        this.flush();
         if (this.bulkProcessor != null) {
-            this.bulkProcessor.flush();
             try {
                 this.bulkProcessor.awaitClose(this.esConfig.getAwaitCloseSec(), TimeUnit.SECONDS);
             } catch (InterruptedException e) {

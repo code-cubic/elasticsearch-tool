@@ -51,5 +51,7 @@ public interface IESDataSource {
 
     RestHighLevelClient getClient();
 
+    void flush();
+
     void close();
 }
