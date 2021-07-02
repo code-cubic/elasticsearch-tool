@@ -46,8 +46,4 @@ public class ESConfig implements Serializable {
         }
     }
 
-
-    public Long getBufferFlushInterval() {
-        throw new RuntimeException("can not setting BufferFlushInterval!");
-    }
 }
