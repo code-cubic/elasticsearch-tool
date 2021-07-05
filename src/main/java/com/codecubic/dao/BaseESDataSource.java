@@ -58,7 +58,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     protected ESConfig esConf;
     @Getter
     protected RestHighLevelClient client;
-    protected BulkPiplineProcessor bulkPiplineProcessor;
+    protected RetryBuilkProcessor retryBuilkProcessor;
 
 
     public BaseESDataSource(ESConfig config) throws ESCliInitExcep {
@@ -531,21 +531,21 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public void flush() {
-        if (this.bulkPiplineProcessor != null) {
-            this.bulkPiplineProcessor.flush();
+        if (this.retryBuilkProcessor != null) {
+            this.retryBuilkProcessor.flush();
         }
     }
 
     private synchronized void loadBulkProcessor() throws BulkProcessorInitExcp {
-        if (this.bulkPiplineProcessor == null) {
-            this.bulkPiplineProcessor = new BulkPiplineProcessor(this.client, this.esConf);
+        if (this.retryBuilkProcessor == null) {
+            this.retryBuilkProcessor = new RetryBuilkProcessor(this.client, this.esConf);
         }
     }
 
     @Override
     public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) throws BulkProcessorInitExcp {
         loadBulkProcessor();
-        return this.bulkPiplineProcessor.asyncBulkUpsert(indexName, docType, docs);
+        return this.retryBuilkProcessor.asyncBulkUpsert(indexName, docType, docs);
     }
 
 
@@ -557,7 +557,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws BulkProcessorInitExcp {
         loadBulkProcessor();
-        return this.bulkPiplineProcessor.asyBulkDelDoc(indexName, docType, docIds);
+        return this.retryBuilkProcessor.asyBulkDelDoc(indexName, docType, docIds);
     }
 
     /**
@@ -615,7 +615,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public void close() {
-        Utils.close(this.bulkPiplineProcessor);
+        Utils.close(this.retryBuilkProcessor);
         Utils.close(this.client);
     }
 

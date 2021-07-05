@@ -18,39 +18,70 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 
 import java.io.Closeable;
+import java.net.ConnectException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 @Slf4j
-public class BulkPiplineProcessor implements Closeable {
+public class RetryBuilkProcessor implements Closeable {
     private RestHighLevelClient client;
     private ESConfig esConfig;
     private final List<DocWriteRequest> lazyQueue = new LinkedList<>();
+    private final AtomicBoolean connS = new AtomicBoolean(true);
+    /**
+     * please do not use bulkProcessor.add,use this.addReq insteaded
+     */
     private volatile BulkProcessor bulkProcessor;
 
-    public BulkPiplineProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkProcessorInitExcp {
+    public RetryBuilkProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkProcessorInitExcp {
         this.client = client;
         this.esConfig = esConf;
-        initBulkProcessor();
+        this.bulkProcessor = buildProcessor();
     }
 
     public void flush() {
         do {
-            this.bulkProcessor.flush();
-            retryWriteAll();
+            if (this.connS.get()) {
+                this.bulkProcessor.flush();
+                retryWriteAll();
+            }
             TimeUtil.sleepSec(this.esConfig.getAwaitCloseSec().intValue());
+            log.debug("flush sleep:{}(s)", this.esConfig.getAwaitCloseSec());
         }
         while (!this.lazyQueue.isEmpty());
+    }
+
+    private void addReq(DocWriteRequest doc) {
+        while (!this.connS.get()) {
+            synchronized (this.bulkProcessor) {
+                if (!this.connS.get()) {
+                    try {
+                        this.bulkProcessor = buildProcessor();
+                    } catch (BulkProcessorInitExcp bulkProcessorInitExcp) {
+                        log.error("", bulkProcessorInitExcp);
+                        TimeUtil.sleepSec(3);
+                        log.debug("buildProcessor failure sleep:{}(s)", 3);
+                        continue;
+                    }
+                    this.connS.set(true);
+                }
+                break;
+            }
+        }
+        this.bulkProcessor.add(doc);
     }
 
 
     private static class RetryFailureListener implements BulkProcessor.Listener {
         private final List<DocWriteRequest> lazyQueue;
+        private final AtomicBoolean connS;
 
-        public RetryFailureListener(List<DocWriteRequest> lazyQueue) {
+        public RetryFailureListener(List<DocWriteRequest> lazyQueue, AtomicBoolean connS) {
             this.lazyQueue = lazyQueue;
+            this.connS = connS;
         }
 
         @Override
@@ -78,19 +109,23 @@ public class BulkPiplineProcessor implements Closeable {
         @Override
         public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
             log.error("", failure);
+            if (failure instanceof ConnectException) {
+                this.connS.set(false);
+                this.lazyQueue.addAll(request.requests());
+            }
         }
     }
 
-    private synchronized void initBulkProcessor() throws BulkProcessorInitExcp {
+    private synchronized BulkProcessor buildProcessor() throws BulkProcessorInitExcp {
         try {
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer = (rq, listener) -> this.client.bulkAsync(rq, RequestOptions.DEFAULT, listener);
-            BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, new RetryFailureListener(this.lazyQueue));
+            BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, new RetryFailureListener(this.lazyQueue, this.connS));
             builder.setBulkActions(this.esConfig.getBatch());
             builder.setBulkSize(new ByteSizeValue(this.esConfig.getBufferWriteSize(), ByteSizeUnit.MB));
             builder.setConcurrentRequests(this.esConfig.getParallel());
 //            builder.setFlushInterval(TimeValue.timeValueSeconds(this.esConfig.getBufferFlushInterval()));
             builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(this.esConfig.getBackOffSec()), this.esConfig.getBackOffRetries()));
-            this.bulkProcessor = builder.build();
+            return builder.build();
         } catch (Exception e) {
             throw new BulkProcessorInitExcp(e);
         }
@@ -118,7 +153,7 @@ public class BulkPiplineProcessor implements Closeable {
                 request.retryOnConflict(10);
                 request.waitForActiveShards(1);
                 request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
-                this.bulkProcessor.add(request);
+                this.addReq(request);
             }
             retryWrite();
         } catch (Exception e) {
@@ -142,7 +177,7 @@ public class BulkPiplineProcessor implements Closeable {
             for (String id : docIds) {
                 DeleteRequest request = new DeleteRequest(indexName, docType, id);
                 request.waitForActiveShards(1);
-                this.bulkProcessor.add(request);
+                this.addReq(request);
             }
         } catch (Exception e) {
             log.error("", e);
@@ -156,13 +191,15 @@ public class BulkPiplineProcessor implements Closeable {
             log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
             TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
         }
+        log.info("lazyQueue.size:{}", this.lazyQueue.size());
         int i = 0;
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext() && i < 200) {
-            this.bulkProcessor.add(this.lazyQueue.get(0));
+            this.addReq(this.lazyQueue.get(0));
             this.lazyQueue.remove(0);
             i++;
         }
+        log.info("lazyQueue.size:{}", this.lazyQueue.size());
     }
 
     private void retryWriteAll() {
@@ -170,11 +207,13 @@ public class BulkPiplineProcessor implements Closeable {
             log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
             TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
         }
+        log.info("lazyQueue.size:{}", this.lazyQueue.size());
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext()) {
-            this.bulkProcessor.add(this.lazyQueue.get(0));
+            this.addReq(this.lazyQueue.get(0));
             this.lazyQueue.remove(0);
         }
+        log.info("lazyQueue.size:{}", this.lazyQueue.size());
     }
 
 

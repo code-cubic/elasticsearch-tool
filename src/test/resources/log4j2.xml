@@ -8,8 +8,8 @@
     </Appenders>
 
     <Loggers>
-        <Logger name="com.codecubic" level="debug"/>
-        <Root additivity="false" level="debug">
+        <Logger name="com.codecubic" level="info"/>
+        <Root additivity="false" level="info">
             <AppenderRef ref="console"/>
         </Root>
     </Loggers>
