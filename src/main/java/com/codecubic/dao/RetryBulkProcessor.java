@@ -26,17 +26,18 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 @Slf4j
-public class RetryBuilkProcessor implements Closeable {
+public class RetryBulkProcessor implements Closeable {
     private RestHighLevelClient client;
     private ESConfig esConfig;
     private final List<DocWriteRequest> lazyQueue = new LinkedList<>();
-    private final AtomicBoolean connS = new AtomicBoolean(true);
+    private final AtomicBoolean processorHealth = new AtomicBoolean(true);
     /**
      * please do not use bulkProcessor.add,use this.addReq insteaded
      */
     private volatile BulkProcessor bulkProcessor;
+    private volatile long cnt;
 
-    public RetryBuilkProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkProcessorInitExcp {
+    public RetryBulkProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkProcessorInitExcp {
         this.client = client;
         this.esConfig = esConf;
         this.bulkProcessor = buildProcessor();
@@ -44,44 +45,58 @@ public class RetryBuilkProcessor implements Closeable {
 
     public void flush() {
         do {
-            if (this.connS.get()) {
+            if (this.processorHealth.get()) {
                 this.bulkProcessor.flush();
                 retryWriteAll();
             }
             TimeUtil.sleepSec(this.esConfig.getAwaitCloseSec().intValue());
-            log.debug("flush sleep:{}(s)", this.esConfig.getAwaitCloseSec());
+            log.debug("flush sleep:{}(ms)", this.esConfig.getAwaitCloseSec() * 1000);
         }
         while (!this.lazyQueue.isEmpty());
     }
 
-    private void addReq(DocWriteRequest doc) {
-        while (!this.connS.get()) {
+    private void addReq(DocWriteRequest doc, boolean incr) {
+        while (!this.processorHealth.get()) {
             synchronized (this.bulkProcessor) {
-                if (!this.connS.get()) {
+                if (!this.processorHealth.get()) {
                     try {
                         this.bulkProcessor = buildProcessor();
                     } catch (BulkProcessorInitExcp bulkProcessorInitExcp) {
                         log.error("", bulkProcessorInitExcp);
                         TimeUtil.sleepSec(3);
-                        log.debug("buildProcessor failure sleep:{}(s)", 3);
+                        log.error("buildProcessor failure sleep:{}(ms)", 3000);
                         continue;
                     }
-                    this.connS.set(true);
+                    this.processorHealth.set(true);
                 }
                 break;
             }
         }
         this.bulkProcessor.add(doc);
+        if (incr) {
+            cnt++;
+            if (cnt % 2000 == 0) {
+                log.info("cnt:{}", cnt);
+            }
+            if (cnt == Long.MAX_VALUE) {
+                log.info("cnt:{},reset", cnt);
+                cnt = 0L;
+            }
+        }
+        if (!this.lazyQueue.isEmpty() && this.lazyQueue.size() > 10000 && this.lazyQueue.size() % 10000 == 0) {
+            log.warn("lazyExe start,sleep:{}(ms)", this.esConfig.getReqWriteWaitMill());
+            TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
+        }
     }
 
 
     private static class RetryFailureListener implements BulkProcessor.Listener {
         private final List<DocWriteRequest> lazyQueue;
-        private final AtomicBoolean connS;
+        private final AtomicBoolean processorHealth;
 
-        public RetryFailureListener(List<DocWriteRequest> lazyQueue, AtomicBoolean connS) {
+        public RetryFailureListener(List<DocWriteRequest> lazyQueue, AtomicBoolean processorHealth) {
             this.lazyQueue = lazyQueue;
-            this.connS = connS;
+            this.processorHealth = processorHealth;
         }
 
         @Override
@@ -110,7 +125,7 @@ public class RetryBuilkProcessor implements Closeable {
         public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
             log.error("", failure);
             if (failure instanceof ConnectException) {
-                this.connS.set(false);
+                this.processorHealth.set(false);
                 this.lazyQueue.addAll(request.requests());
             }
         }
@@ -119,7 +134,7 @@ public class RetryBuilkProcessor implements Closeable {
     private synchronized BulkProcessor buildProcessor() throws BulkProcessorInitExcp {
         try {
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer = (rq, listener) -> this.client.bulkAsync(rq, RequestOptions.DEFAULT, listener);
-            BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, new RetryFailureListener(this.lazyQueue, this.connS));
+            BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, new RetryFailureListener(this.lazyQueue, this.processorHealth));
             builder.setBulkActions(this.esConfig.getBatch());
             builder.setBulkSize(new ByteSizeValue(this.esConfig.getBufferWriteSize(), ByteSizeUnit.MB));
             builder.setConcurrentRequests(this.esConfig.getParallel());
@@ -128,6 +143,8 @@ public class RetryBuilkProcessor implements Closeable {
             return builder.build();
         } catch (Exception e) {
             throw new BulkProcessorInitExcp(e);
+        } finally {
+            log.info("exec buildProcessor end");
         }
     }
 
@@ -142,10 +159,6 @@ public class RetryBuilkProcessor implements Closeable {
         Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docs, "docs can not be null");
         try {
-            if (!this.lazyQueue.isEmpty()) {
-                log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
-                TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
-            }
             for (DocData doc : docs) {
                 Map<String, Object> objectMap = doc.toMap();
                 UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
@@ -153,7 +166,7 @@ public class RetryBuilkProcessor implements Closeable {
                 request.retryOnConflict(10);
                 request.waitForActiveShards(1);
                 request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
-                this.addReq(request);
+                this.addReq(request, true);
             }
             retryWrite();
         } catch (Exception e) {
@@ -177,7 +190,7 @@ public class RetryBuilkProcessor implements Closeable {
             for (String id : docIds) {
                 DeleteRequest request = new DeleteRequest(indexName, docType, id);
                 request.waitForActiveShards(1);
-                this.addReq(request);
+                this.addReq(request, true);
             }
         } catch (Exception e) {
             log.error("", e);
@@ -187,15 +200,11 @@ public class RetryBuilkProcessor implements Closeable {
     }
 
     private void retryWrite() {
-        if (!this.lazyQueue.isEmpty()) {
-            log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
-            TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
-        }
         log.info("lazyQueue.size:{}", this.lazyQueue.size());
         int i = 0;
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext() && i < 200) {
-            this.addReq(this.lazyQueue.get(0));
+            this.addReq(this.lazyQueue.get(0), false);
             this.lazyQueue.remove(0);
             i++;
         }
@@ -203,14 +212,10 @@ public class RetryBuilkProcessor implements Closeable {
     }
 
     private void retryWriteAll() {
-        if (!this.lazyQueue.isEmpty()) {
-            log.warn("lazyExe,sleep:{}", this.esConfig.getReqWriteWaitMill());
-            TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
-        }
         log.info("lazyQueue.size:{}", this.lazyQueue.size());
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext()) {
-            this.addReq(this.lazyQueue.get(0));
+            this.addReq(this.lazyQueue.get(0), false);
             this.lazyQueue.remove(0);
         }
         log.info("lazyQueue.size:{}", this.lazyQueue.size());
@@ -224,8 +229,9 @@ public class RetryBuilkProcessor implements Closeable {
             try {
                 this.bulkProcessor.awaitClose(this.esConfig.getAwaitCloseSec(), TimeUnit.SECONDS);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                log.error("", e);
             }
         }
     }
+
 }

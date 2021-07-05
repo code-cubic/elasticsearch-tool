@@ -19,7 +19,7 @@ class IESDataSourceTest {
 
     private static IESDataSource esServ;
     private static IESDataSource esSqlServ;
-    private static final int WAIT_FLUSH_SEC = 4;
+    private static final int WAIT_FLUSH_SEC = 3;
 
     static {
         Yaml yaml = new Yaml();
@@ -329,7 +329,6 @@ class IESDataSourceTest {
     @Order(39)
     @Test
     void asyBulkDelDoc() throws BulkProcessorInitExcp {
-        TimeUtil.sleepSec(WAIT_FLUSH_SEC);
         Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
         esServ.asyBulkDelDoc("index_20201101", "_doc", new ArrayList() {{
             add("100000002");
@@ -344,7 +343,7 @@ class IESDataSourceTest {
     @Test
     void asyncBulkUpsert5() throws BulkProcessorInitExcp {
         ArrayList<DocData> docDatas = new ArrayList<>();
-        for (int i = 1; i < 100001; i++) {
+        for (int i = 1; i < 20001; i++) {
             DocData doc = new DocData();
             String cid = "20000000" + i;
             doc.setId(cid);
@@ -367,7 +366,7 @@ class IESDataSourceTest {
         }
         esServ.asyncBulkUpsert("index_20201101", "_doc", docDatas);
         esServ.flush();
-        Assertions.assertEquals(100000, esSqlServ.query("select count(1) as ct from index_20201101 where cid  > 200000000").get(0).get("ct"));
+        Assertions.assertEquals(20000, esSqlServ.query("select count(1) as ct from index_20201101 where cid  > 200000000").get(0).get("ct"));
     }
 
     @Order(998)

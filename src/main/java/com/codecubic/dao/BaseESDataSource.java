@@ -58,7 +58,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     protected ESConfig esConf;
     @Getter
     protected RestHighLevelClient client;
-    protected RetryBuilkProcessor retryBuilkProcessor;
+    protected RetryBulkProcessor retryBulkProcessor;
 
 
     public BaseESDataSource(ESConfig config) throws ESCliInitExcep {
@@ -531,21 +531,21 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public void flush() {
-        if (this.retryBuilkProcessor != null) {
-            this.retryBuilkProcessor.flush();
+        if (this.retryBulkProcessor != null) {
+            this.retryBulkProcessor.flush();
         }
     }
 
     private synchronized void loadBulkProcessor() throws BulkProcessorInitExcp {
-        if (this.retryBuilkProcessor == null) {
-            this.retryBuilkProcessor = new RetryBuilkProcessor(this.client, this.esConf);
+        if (this.retryBulkProcessor == null) {
+            this.retryBulkProcessor = new RetryBulkProcessor(this.client, this.esConf);
         }
     }
 
     @Override
     public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) throws BulkProcessorInitExcp {
         loadBulkProcessor();
-        return this.retryBuilkProcessor.asyncBulkUpsert(indexName, docType, docs);
+        return this.retryBulkProcessor.asyncBulkUpsert(indexName, docType, docs);
     }
 
 
@@ -557,7 +557,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws BulkProcessorInitExcp {
         loadBulkProcessor();
-        return this.retryBuilkProcessor.asyBulkDelDoc(indexName, docType, docIds);
+        return this.retryBulkProcessor.asyBulkDelDoc(indexName, docType, docIds);
     }
 
     /**
@@ -615,7 +615,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public void close() {
-        Utils.close(this.retryBuilkProcessor);
+        Utils.close(this.retryBulkProcessor);
         Utils.close(this.client);
     }
 

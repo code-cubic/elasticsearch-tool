@@ -1,8 +1,8 @@
 httpHostInfo: "192.168.99.20:9200"
 batch: -1
 bufferWriteSize: 1
-connectTimeoutMillis: 10000
-socketTimeoutMillis: 30000
+connectTimeoutMillis: 30000
+socketTimeoutMillis: 90000
 connectionRequestTimeoutMillis: 10000
 maxConnectPerRoute: 2
 maxConnectTotal: 2
