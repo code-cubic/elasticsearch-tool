@@ -277,6 +277,7 @@ class IESDataSourceTest {
     @Order(30)
     @Test
     void delByQuery() throws BulkProcessorInitExcp {
+        Assertions.assertEquals("100000001", esServ.getDoc("index_20201101", "_doc", "100000001", null).getId());
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.putIfAbsent("load_bal", null);
         paramMap.putIfAbsent("cid", "100000001");
