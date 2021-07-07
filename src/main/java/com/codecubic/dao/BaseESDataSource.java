@@ -110,10 +110,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 新增索引
-     *
-     * @param indexName 索引名称
-     * @param source    索引定义
+     * @param indexName
+     * @param source    es index json mapping
      */
     @Override
     public boolean createIndex(String indexName, String source) {
@@ -152,9 +150,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     /**
-     * 删除索引
-     *
-     * @param indexName 索引名称
+     * @param indexName
      * @return
      */
     @Override
@@ -172,10 +168,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 判断索引是否已经存在
-     *
-     * @param indexName 索引名称
-     * @return
+     * @param indexName
+     * @return true: exist , false : not exist
      */
     @Override
     public boolean existIndex(String indexName) {
@@ -192,8 +186,6 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     /**
-     * 判断指定别名是否归属指定索引
-     *
      * @param indexName
      * @param indexAlias
      * @return
@@ -214,7 +206,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     /**
-     * 获取指定索引的所有别名
+     * get index all alias
      *
      * @param indexName
      * @return
@@ -248,11 +240,9 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 更新索引别名
-     *
-     * @param indexName 索引别名
-     * @param newAlias  新增别名
-     * @param delAlias  删除别名
+     * @param indexName
+     * @param newAlias
+     * @param delAlias
      * @return
      */
     @Override
@@ -283,8 +273,6 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     /**
-     * 获取指定别名映射的所有索引名
-     *
      * @param indexAlias
      * @return
      */
@@ -304,13 +292,13 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     /**
-     * 获取当前集群所有索引名（索引名不是以.开头的）
+     * get all index name on cluster and not return index which name start with .
      *
      * @return
      */
     @Override
-    public List<String> getAllIndex() {
-        List<String> list = new ArrayList<>();
+    public Set<String> getAllIndex() {
+        Set<String> list = new HashSet<>();
         try {
             ClusterHealthRequest request = new ClusterHealthRequest();
             ClusterHealthResponse response = this.client.cluster().health(request, RequestOptions.DEFAULT);
@@ -330,10 +318,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 获取指定索引的定义信息
-     *
-     * @param indexName 索引名
-     * @param type      索引type
+     * @param indexName
+     * @param type
      * @return
      */
     @Override
@@ -392,8 +378,6 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 为索引添加新字段
-     *
      * @param indexinf
      * @return
      */
@@ -427,14 +411,44 @@ public class BaseESDataSource implements IESDataSource, Closeable {
         return false;
     }
 
+    @Override
+    public boolean addNewField2Index(String index, String type, Collection<FieldInfo> fieldInfos) {
+        Preconditions.checkNotNull(index, "indexName can not be null");
+        Preconditions.checkNotNull(type, "docType can not be null");
+        Preconditions.checkNotNull(fieldInfos, "propInfo can not be null");
+
+        PutMappingRequest request = new PutMappingRequest(index);
+        request.type(type);
+        request.timeout(TimeValue.timeValueMinutes(1));
+        request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
+        Map<String, Object> properties = new HashMap<>(fieldInfos.size());
+        for (FieldInfo fi : fieldInfos) {
+            Map<String, Object> message = new HashMap<>();
+            if ("nested".equalsIgnoreCase(fi.getType()) || "object".equalsIgnoreCase(fi.getType())) {
+                message.put("properties", fi.getInnerFieldTypeMap());
+            }
+            message.put("type", fi.getType());
+            properties.put(fi.getName(), message);
+        }
+        Map<String, Object> jsonMap = new HashMap<>();
+        jsonMap.put("properties", properties);
+        request.source(jsonMap);
+        try {
+            return this.client.indices().putMapping(request, RequestOptions.DEFAULT).isAcknowledged();
+        } catch (Exception e) {
+            log.error("", e);
+        }
+        return false;
+    }
+
 
     /**
-     * 统计满足条件的指定索引的文档总条数
+     * count data number when meet conditions
      *
      * @param indexName
      * @param docType
-     * @param conditions 条件组合，每一组条件之间是and关系，每一组条件都是K=v的关系
-     * @return 查询失败时，返回-1
+     * @param conditions
+     * @return -1: when exception occurence
      */
     @Override
     public long count(String indexName, String docType, Map<String, Object> conditions) {
@@ -474,16 +488,14 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
 
     /**
-     * 根据指定ID查询文档数据
-     *
      * @param indexName
      * @param docType
      * @param id
-     * @param fields    指定需要返回的字段名
+     * @param returnFields
      * @return
      */
     @Override
-    public DocData getDoc(String indexName, String docType, String id, String[] fields) {
+    public DocData getDoc(String indexName, String docType, String id, String[] returnFields) {
         Preconditions.checkNotNull(indexName, "indexName can not be null");
         Preconditions.checkNotNull(docType, "docType can not be null");
         try {
@@ -491,8 +503,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
             getRequest.type(docType);
             getRequest.id(id);
             FetchSourceContext sourceContext;
-            if (fields != null) {
-                sourceContext = new FetchSourceContext(true, fields, null);
+            if (returnFields != null) {
+                sourceContext = new FetchSourceContext(true, returnFields, null);
             } else {
                 sourceContext = new FetchSourceContext(true, null, null);
             }
@@ -523,7 +535,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
         Map<String, Object> objectMap = doc.toMap();
         UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                 .upsert(objectMap).doc(objectMap);
-        request.retryOnConflict(2);
+        request.retryOnConflict(10);
         request.waitForActiveShards(1);
         request.timeout(TimeValue.timeValueSeconds(this.esConf.getReqWriteWaitMill()));
         this.client.update(request, RequestOptions.DEFAULT);

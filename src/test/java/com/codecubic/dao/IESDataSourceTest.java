@@ -29,8 +29,6 @@ class IESDataSourceTest {
             esSqlServ = new ESDataSource(esConfig);
         } catch (ESCliInitExcep e) {
             e.printStackTrace();
-        } catch (NoSuchFieldException e) {
-            e.printStackTrace();
         }
     }
 
@@ -62,7 +60,7 @@ class IESDataSourceTest {
     @Order(2)
     @Test
     void getAllIndex() {
-        List<String> allIndex = esServ.getAllIndex();
+        Set<String> allIndex = esServ.getAllIndex();
         Assertions.assertNotNull(allIndex);
         allIndex.forEach(index -> System.out.println(index));
     }

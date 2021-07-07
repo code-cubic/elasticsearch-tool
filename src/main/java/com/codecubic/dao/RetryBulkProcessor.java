@@ -168,10 +168,11 @@ public class RetryBulkProcessor implements Closeable {
                 request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
                 this.addReq(request, true);
             }
-            retryWrite();
         } catch (Exception e) {
             log.error("", e);
             return false;
+        } finally {
+            retryWrite();
         }
         return true;
     }
@@ -195,6 +196,8 @@ public class RetryBulkProcessor implements Closeable {
         } catch (Exception e) {
             log.error("", e);
             return false;
+        } finally {
+            retryWrite();
         }
         return true;
     }

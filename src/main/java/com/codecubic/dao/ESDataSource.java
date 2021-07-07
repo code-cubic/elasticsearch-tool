@@ -28,9 +28,8 @@ public class ESDataSource extends BaseESDataSource {
 
     private HttpClientHandler sqlHandler;
 
-    public ESDataSource(ESConfig config) throws ESCliInitExcep, NoSuchFieldException {
+    public ESDataSource(ESConfig config) throws ESCliInitExcep {
         super(config);
-        super.esConf = config;
         String[] hosts = StringUtils.split(super.esConf.getHttpHostInfo(), ",");
         String[] split = StringUtils.split(hosts[0], ":");
         String url = String.format("http://%s:%s/_xpack/sql", split[0], split[1]);
