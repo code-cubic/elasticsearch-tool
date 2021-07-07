@@ -3,7 +3,7 @@ package com.codecubic.dao;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.codecubic.common.*;
-import com.codecubic.exception.BulkProcessorInitExcp;
+import com.codecubic.exception.BulkPrcesrIntExcep;
 import com.codecubic.exception.ESCliInitExcep;
 import com.codecubic.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -140,7 +140,7 @@ class IESDataSourceTest {
 
     @Order(4)
     @Test
-    void asyncBulkUpsert2() throws BulkProcessorInitExcp {
+    void asyncBulkUpsert2() throws BulkPrcesrIntExcep {
         ArrayList<DocData> docDatas = new ArrayList<>();
         for (int i = 2; i < 21; i++) {
             DocData doc = new DocData();
@@ -169,7 +169,7 @@ class IESDataSourceTest {
 
     @Order(5)
     @Test
-    void asyncBulkUpsert3() throws BulkProcessorInitExcp {
+    void asyncBulkUpsert3() throws BulkPrcesrIntExcep {
         ArrayList<DocData> docDatas = new ArrayList<>();
         DocData doc = new DocData();
         doc.setId("100000001");
@@ -274,7 +274,7 @@ class IESDataSourceTest {
 
     @Order(30)
     @Test
-    void delByQuery() throws BulkProcessorInitExcp {
+    void delByQuery() throws BulkPrcesrIntExcep {
         Assertions.assertEquals("100000001", esServ.getDoc("index_20201101", "_doc", "100000001", null).getId());
         HashMap<String, Object> paramMap = new HashMap<>();
         paramMap.putIfAbsent("load_bal", null);
@@ -327,7 +327,7 @@ class IESDataSourceTest {
 
     @Order(39)
     @Test
-    void asyBulkDelDoc() throws BulkProcessorInitExcp {
+    void asyBulkDelDoc() {
         Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
         esSqlServ.asyBulkDelDoc("index_20201101", "_doc", new ArrayList() {{
             add("100000002");
@@ -339,7 +339,7 @@ class IESDataSourceTest {
 
     @Order(50)
     @Test
-    void asyncBulkUpsert5() throws BulkProcessorInitExcp {
+    void asyncBulkUpsert5() {
         ArrayList<DocData> docDatas = new ArrayList<>();
         for (int i = 1; i < 20001; i++) {
             DocData doc = new DocData();

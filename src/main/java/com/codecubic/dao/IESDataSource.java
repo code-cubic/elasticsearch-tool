@@ -3,7 +3,7 @@ package com.codecubic.dao;
 import com.codecubic.common.DocData;
 import com.codecubic.common.FieldInfo;
 import com.codecubic.common.IndexInfo;
-import com.codecubic.exception.BulkProcessorInitExcp;
+import com.codecubic.exception.BulkPrcesrIntExcep;
 import org.elasticsearch.client.RestHighLevelClient;
 
 import java.io.IOException;
@@ -27,15 +27,13 @@ public interface IESDataSource {
     @Deprecated
     boolean addNewField2Index(IndexInfo indexinf);
 
-    DocData getDoc(String indexName, String docType, String id, String[] fields);
-
-    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) throws BulkProcessorInitExcp;
-
     boolean addNewField2Index(String index, String type, Collection<FieldInfo> fieldInfos);
+
+    DocData getDoc(String indexName, String docType, String id, String[] fields);
 
     long count(String indexName, String docType, Map<String, Object> conditions);
 
-    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) throws BulkProcessorInitExcp;
+    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) throws BulkPrcesrIntExcep;
 
     List<Map<String, Object>> query(String sql);
 
@@ -49,7 +47,9 @@ public interface IESDataSource {
 
     boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias);
 
-    boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws BulkProcessorInitExcp;
+    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
+
+    boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
 
     void upsrt(String indexName, String docType, DocData doc) throws IOException;
 

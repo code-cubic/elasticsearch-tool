@@ -2,7 +2,7 @@ package com.codecubic.dao;
 
 import com.codecubic.common.DocData;
 import com.codecubic.common.ESConfig;
-import com.codecubic.exception.BulkProcessorInitExcp;
+import com.codecubic.exception.BulkPrcesrIntExcep;
 import com.codecubic.util.TimeUtil;
 import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +37,7 @@ public class RetryBulkProcessor implements Closeable {
     private volatile BulkProcessor bulkProcessor;
     private volatile long cnt;
 
-    public RetryBulkProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkProcessorInitExcp {
+    public RetryBulkProcessor(RestHighLevelClient client, ESConfig esConf) throws BulkPrcesrIntExcep {
         this.client = client;
         this.esConfig = esConf;
         this.bulkProcessor = buildProcessor();
@@ -61,8 +61,8 @@ public class RetryBulkProcessor implements Closeable {
                 if (!this.processorHealth.get()) {
                     try {
                         this.bulkProcessor = buildProcessor();
-                    } catch (BulkProcessorInitExcp bulkProcessorInitExcp) {
-                        log.error("", bulkProcessorInitExcp);
+                    } catch (BulkPrcesrIntExcep bulkPrcesrIntExcep) {
+                        log.error("", bulkPrcesrIntExcep);
                         TimeUtil.sleepSec(3);
                         log.error("buildProcessor failure sleep:{}(ms)", 3000);
                         continue;
@@ -131,7 +131,7 @@ public class RetryBulkProcessor implements Closeable {
         }
     }
 
-    private synchronized BulkProcessor buildProcessor() throws BulkProcessorInitExcp {
+    private synchronized BulkProcessor buildProcessor() throws BulkPrcesrIntExcep {
         try {
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer = (rq, listener) -> this.client.bulkAsync(rq, RequestOptions.DEFAULT, listener);
             BulkProcessor.Builder builder = BulkProcessor.builder(bulkConsumer, new RetryFailureListener(this.lazyQueue, this.processorHealth));
@@ -142,7 +142,7 @@ public class RetryBulkProcessor implements Closeable {
             builder.setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(this.esConfig.getBackOffSec()), this.esConfig.getBackOffRetries()));
             return builder.build();
         } catch (Exception e) {
-            throw new BulkProcessorInitExcp(e);
+            throw new BulkPrcesrIntExcep(e);
         } finally {
             log.info("exec buildProcessor end");
         }

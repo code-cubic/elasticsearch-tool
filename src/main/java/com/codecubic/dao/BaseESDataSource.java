@@ -1,9 +1,10 @@
 package com.codecubic.dao;
 
 import com.codecubic.common.*;
-import com.codecubic.exception.BulkProcessorInitExcp;
+import com.codecubic.exception.BulkPrcesrIntExcep;
 import com.codecubic.exception.ESCliInitExcep;
 import com.codecubic.exception.NotImplExcep;
+import com.codecubic.util.TimeUtil;
 import com.codecubic.util.Utils;
 import com.google.common.base.Preconditions;
 import lombok.Getter;
@@ -548,14 +549,20 @@ public class BaseESDataSource implements IESDataSource, Closeable {
         }
     }
 
-    private synchronized void loadBulkProcessor() throws BulkProcessorInitExcp {
-        if (this.retryBulkProcessor == null) {
-            this.retryBulkProcessor = new RetryBulkProcessor(this.client, this.esConf);
+    private synchronized void loadBulkProcessor() {
+        while (this.retryBulkProcessor == null) {
+            try {
+                this.retryBulkProcessor = new RetryBulkProcessor(this.client, this.esConf);
+                return;
+            } catch (BulkPrcesrIntExcep bulkPrcesrIntExcep) {
+                log.error("", bulkPrcesrIntExcep);
+            }
+            TimeUtil.sleepMill(5000);
         }
     }
 
     @Override
-    public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) throws BulkProcessorInitExcp {
+    public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
         loadBulkProcessor();
         return this.retryBulkProcessor.asyncBulkUpsert(indexName, docType, docs);
     }
@@ -567,7 +574,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      * @param docIds
      * @return true:submit suss
      */
-    public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) throws BulkProcessorInitExcp {
+    public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
         loadBulkProcessor();
         return this.retryBulkProcessor.asyBulkDelDoc(indexName, docType, docIds);
     }
