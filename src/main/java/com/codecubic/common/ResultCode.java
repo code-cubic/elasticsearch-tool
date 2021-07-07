@@ -1,5 +1,6 @@
 package com.codecubic.common;
 
+@Deprecated
 public enum  ResultCode {
     /**
      * 版本冲突
