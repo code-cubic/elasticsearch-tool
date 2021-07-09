@@ -384,32 +384,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean addNewField2Index(IndexInfo indexinf) {
-        Preconditions.checkNotNull(indexinf.getName(), "indexName can not be null");
-        Preconditions.checkNotNull(indexinf.getType(), "docType can not be null");
-        Preconditions.checkNotNull(indexinf.getPropInfo(), "propInfo can not be null");
-
-        PutMappingRequest request = new PutMappingRequest(indexinf.getName());
-        request.type(indexinf.getType());
-        request.timeout(TimeValue.timeValueMinutes(1));
-        request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
-        Map<String, Object> properties = new HashMap<>(indexinf.getPropInfo().getFields().size());
-        for (FieldInfo fi : indexinf.getPropInfo().getFields()) {
-            Map<String, Object> message = new HashMap<>();
-            if ("nested".equalsIgnoreCase(fi.getType()) || "object".equalsIgnoreCase(fi.getType())) {
-                message.put("properties", fi.getInnerFieldTypeMap());
-            }
-            message.put("type", fi.getType());
-            properties.put(fi.getName(), message);
-        }
-        Map<String, Object> jsonMap = new HashMap<>();
-        jsonMap.put("properties", properties);
-        request.source(jsonMap);
-        try {
-            return this.client.indices().putMapping(request, RequestOptions.DEFAULT).isAcknowledged();
-        } catch (Exception e) {
-            log.error("", e);
-        }
-        return false;
+        return this.addNewField2Index(indexinf.getName(), indexinf.getType(), indexinf.getPropInfo().getFields());
     }
 
     @Override
@@ -565,6 +540,12 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
         loadBulkProcessor();
         return this.retryBulkProcessor.asyncBulkUpsert(indexName, docType, docs);
+    }
+
+    @Override
+    public boolean asyncUpsert(String indexName, String docType, DocData doc) {
+        loadBulkProcessor();
+        return this.retryBulkProcessor.asyncUpsert(indexName, docType, doc);
     }
 
 

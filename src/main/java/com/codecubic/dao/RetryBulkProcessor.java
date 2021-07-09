@@ -44,6 +44,7 @@ public class RetryBulkProcessor implements Closeable {
     }
 
     public void flush() {
+        log.info("start flush...");
         do {
             if (this.processorHealth.get()) {
                 this.bulkProcessor.flush();
@@ -84,9 +85,30 @@ public class RetryBulkProcessor implements Closeable {
             }
         }
         if (!this.lazyQueue.isEmpty() && this.lazyQueue.size() > 10000 && this.lazyQueue.size() % 10000 == 0) {
-            log.warn("lazyExe start,sleep:{}(ms)", this.esConfig.getReqWriteWaitMill());
+            log.warn("lazyExe sleep:{}(ms)", this.esConfig.getReqWriteWaitMill());
             TimeUtil.sleepMill(this.esConfig.getReqWriteWaitMill());
         }
+    }
+
+    public boolean asyncUpsert(String indexName, String docType, DocData doc) {
+        Preconditions.checkNotNull(indexName, "indexName can not be null");
+        Preconditions.checkNotNull(docType, "docType can not be null");
+        Preconditions.checkNotNull(doc, "docs can not be null");
+        try {
+            Map<String, Object> objectMap = doc.toMap();
+            UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
+                    .upsert(objectMap).doc(objectMap);
+            request.retryOnConflict(10);
+            request.waitForActiveShards(1);
+            request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
+            this.addReq(request, true);
+        } catch (Exception e) {
+            log.error("", e);
+            return false;
+        } finally {
+            retryWrite();
+        }
+        return true;
     }
 
 
@@ -155,24 +177,11 @@ public class RetryBulkProcessor implements Closeable {
      * @return true: submit suss
      */
     public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
         Preconditions.checkNotNull(docs, "docs can not be null");
-        try {
-            for (DocData doc : docs) {
-                Map<String, Object> objectMap = doc.toMap();
-                UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
-                        .upsert(objectMap).doc(objectMap);
-                request.retryOnConflict(10);
-                request.waitForActiveShards(1);
-                request.timeout(TimeValue.timeValueMillis(this.esConfig.getReqWriteWaitMill()));
-                this.addReq(request, true);
+        for (DocData doc : docs) {
+            if (!this.asyncUpsert(indexName, docType, doc)) {
+                return false;
             }
-        } catch (Exception e) {
-            log.error("", e);
-            return false;
-        } finally {
-            retryWrite();
         }
         return true;
     }

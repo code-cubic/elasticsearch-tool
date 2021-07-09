@@ -49,6 +49,8 @@ public interface IESDataSource {
 
     boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
 
+    boolean asyncUpsert(String indexName, String docType, DocData doc);
+
     boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
 
     void upsrt(String indexName, String docType, DocData doc) throws IOException;
@@ -56,7 +58,7 @@ public interface IESDataSource {
     RestHighLevelClient getClient();
 
     /**
-     * where you use bulk api like asyncBulkUpsert, please use this methon when appropriate !
+     * where you use bulk api like asyncBulkUpsert, please use this method when appropriate !
      * if you can not use close method on your program and you use any bulk api , please make shure use this method when appropriate!
      */
     void flush();

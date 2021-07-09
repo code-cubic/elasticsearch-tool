@@ -20,7 +20,7 @@ public class ESConfig implements Serializable {
     /**
      * todo:
      * find issue : when bulk ayn processor failure on connect Exception,
-     * datasource program will get stuck, if you set auto flush
+     * datasource program will get stuck, if you set auto flush.
      * so we forbidden this param temporary!
      */
     private Long bufferFlushInterval = -1L;
