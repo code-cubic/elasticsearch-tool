@@ -3,7 +3,6 @@ package com.codecubic.dao;
 import com.codecubic.common.DocData;
 import com.codecubic.common.FieldInfo;
 import com.codecubic.common.IndexInfo;
-import com.codecubic.exception.BulkPrcesrIntExcep;
 import org.elasticsearch.client.RestHighLevelClient;
 
 import java.io.IOException;
@@ -33,7 +32,7 @@ public interface IESDataSource {
 
     long count(String indexName, String docType, Map<String, Object> conditions);
 
-    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) throws BulkPrcesrIntExcep;
+    boolean delByQuery(String indexName, String docType, Map<String, Object> conditions);
 
     List<Map<String, Object>> query(String sql);
 
