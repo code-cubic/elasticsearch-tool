@@ -116,12 +116,12 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean createIndex(String indexName, String source) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(source, "source can not be null");
-
-        CreateIndexRequest request = new CreateIndexRequest(indexName);
-        request.source(source, XContentType.JSON);
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(source, "source can not be null");
+
+            CreateIndexRequest request = new CreateIndexRequest(indexName);
+            request.source(source, XContentType.JSON);
             this.client.indices().create(request, RequestOptions.DEFAULT);
             return true;
         } catch (IOException e) {
@@ -132,16 +132,16 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public boolean createIndex(IndexInfo indexInf) {
-        Preconditions.checkNotNull(indexInf.getName(), "indexName can not be null");
-        Preconditions.checkNotNull(indexInf.getType(), "docType can not be null");
-        Preconditions.checkNotNull(indexInf.getPropInfo(), "propInfo can not be null");
-
-        CreateIndexRequest request = new CreateIndexRequest(indexInf.getName());
-        String indexSchemaTemplate = this.esConf.getIndexSchemaTemplate();
-        String source = indexSchemaTemplate.replaceAll("\\$docType", indexInf.getType())
-                .replaceAll("\\$properties", indexInf.prop2JsonStr());
-        request.source(source, XContentType.JSON);
         try {
+            Preconditions.checkNotNull(indexInf.getName(), "indexName can not be null");
+            Preconditions.checkNotNull(indexInf.getType(), "docType can not be null");
+            Preconditions.checkNotNull(indexInf.getPropInfo(), "propInfo can not be null");
+
+            CreateIndexRequest request = new CreateIndexRequest(indexInf.getName());
+            String indexSchemaTemplate = this.esConf.getIndexSchemaTemplate();
+            String source = indexSchemaTemplate.replaceAll("\\$docType", indexInf.getType())
+                    .replaceAll("\\$properties", indexInf.prop2JsonStr());
+            request.source(source, XContentType.JSON);
             this.client.indices().create(request, RequestOptions.DEFAULT);
             return true;
         } catch (IOException e) {
@@ -156,8 +156,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean deleIndex(String indexName) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
             DeleteIndexRequest request = new DeleteIndexRequest(indexName);
             AcknowledgedResponse response = this.client.indices().delete(request, RequestOptions.DEFAULT);
             return response.isAcknowledged();
@@ -174,8 +174,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean existIndex(String indexName) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
             GetIndexRequest request = new GetIndexRequest();
             request.indicesOptions(IndicesOptions.STRICT_EXPAND_OPEN);
             request.indices(indexName);
@@ -193,9 +193,9 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean existAlias(String indexName, String indexAlias) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
             GetAliasesRequest request = new GetAliasesRequest();
             request.indices(indexName).aliases(indexAlias);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
@@ -214,9 +214,9 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public Set<String> getAliasByIndex(String indexName) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Set<String> alias = new HashSet<>(10);
+        Set<String> alias = new HashSet<>();
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
             GetAliasesRequest request = new GetAliasesRequest();
             request.indices(indexName);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
@@ -248,24 +248,24 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        IndicesAliasesRequest req = new IndicesAliasesRequest();
-
-        if (newAlias != null) {
-            newAlias.forEach(alias -> {
-                IndicesAliasesRequest.AliasActions aliasAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD).index(indexName).alias(alias);
-                req.addAliasAction(aliasAction);
-            });
-        }
-
-        if (delAlias != null) {
-            delAlias.forEach(alias -> {
-                IndicesAliasesRequest.AliasActions removeAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.REMOVE).index(indexName).alias(alias);
-                req.addAliasAction(removeAction);
-            });
-        }
 
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            IndicesAliasesRequest req = new IndicesAliasesRequest();
+
+            if (newAlias != null) {
+                newAlias.forEach(alias -> {
+                    IndicesAliasesRequest.AliasActions aliasAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD).index(indexName).alias(alias);
+                    req.addAliasAction(aliasAction);
+                });
+            }
+
+            if (delAlias != null) {
+                delAlias.forEach(alias -> {
+                    IndicesAliasesRequest.AliasActions removeAction = new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.REMOVE).index(indexName).alias(alias);
+                    req.addAliasAction(removeAction);
+                });
+            }
             return this.client.indices().updateAliases(req, RequestOptions.DEFAULT).isAcknowledged();
         } catch (IOException e) {
             log.error("", e);
@@ -279,11 +279,11 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public Set<String> getIndexsByAlias(String indexAlias) {
-        Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
-        GetAliasesRequest request = new GetAliasesRequest();
-        request.indices(indexAlias);
-        request.indicesOptions(IndicesOptions.lenientExpandOpen());
         try {
+            Preconditions.checkNotNull(indexAlias, "indexAlias can not be null");
+            GetAliasesRequest request = new GetAliasesRequest();
+            request.indices(indexAlias);
+            request.indicesOptions(IndicesOptions.lenientExpandOpen());
             Map<String, Set<AliasMetaData>> aliases = this.client.indices().getAlias(request, RequestOptions.DEFAULT).getAliases();
             return aliases.keySet();
         } catch (IOException e) {
@@ -325,12 +325,12 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public IndexInfo getIndexSchema(String indexName, String type) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        GetMappingsRequest request = new GetMappingsRequest();
-        request.indices(indexName);
-        request.types(type);
-        request.indicesOptions(IndicesOptions.lenientExpandOpen());
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            GetMappingsRequest request = new GetMappingsRequest();
+            request.indices(indexName);
+            request.types(type);
+            request.indicesOptions(IndicesOptions.lenientExpandOpen());
             GetMappingsResponse response = this.client.indices().getMapping(request, RequestOptions.DEFAULT);
             ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> allMappings = response.mappings();
             ImmutableOpenMap<String, MappingMetaData> indexMaper = allMappings.get(indexName);
@@ -389,27 +389,27 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     @Override
     public boolean addNewField2Index(String index, String type, Collection<FieldInfo> fieldInfos) {
-        Preconditions.checkNotNull(index, "indexName can not be null");
-        Preconditions.checkNotNull(type, "docType can not be null");
-        Preconditions.checkNotNull(fieldInfos, "propInfo can not be null");
-
-        PutMappingRequest request = new PutMappingRequest(index);
-        request.type(type);
-        request.timeout(TimeValue.timeValueMinutes(1));
-        request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
-        Map<String, Object> properties = new HashMap<>(fieldInfos.size());
-        for (FieldInfo fi : fieldInfos) {
-            Map<String, Object> message = new HashMap<>();
-            if ("nested".equalsIgnoreCase(fi.getType()) || "object".equalsIgnoreCase(fi.getType())) {
-                message.put("properties", fi.getInnerFieldTypeMap());
-            }
-            message.put("type", fi.getType());
-            properties.put(fi.getName(), message);
-        }
-        Map<String, Object> jsonMap = new HashMap<>();
-        jsonMap.put("properties", properties);
-        request.source(jsonMap);
         try {
+            Preconditions.checkNotNull(index, "indexName can not be null");
+            Preconditions.checkNotNull(type, "docType can not be null");
+            Preconditions.checkNotNull(fieldInfos, "propInfo can not be null");
+
+            PutMappingRequest request = new PutMappingRequest(index);
+            request.type(type);
+            request.timeout(TimeValue.timeValueMinutes(1));
+            request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
+            Map<String, Object> properties = new HashMap<>(fieldInfos.size());
+            for (FieldInfo fi : fieldInfos) {
+                Map<String, Object> message = new HashMap<>();
+                if ("nested".equalsIgnoreCase(fi.getType()) || "object".equalsIgnoreCase(fi.getType())) {
+                    message.put("properties", fi.getInnerFieldTypeMap());
+                }
+                message.put("type", fi.getType());
+                properties.put(fi.getName(), message);
+            }
+            Map<String, Object> jsonMap = new HashMap<>();
+            jsonMap.put("properties", properties);
+            request.source(jsonMap);
             return this.client.indices().putMapping(request, RequestOptions.DEFAULT).isAcknowledged();
         } catch (Exception e) {
             log.error("", e);
@@ -428,33 +428,33 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public long count(String indexName, String docType, Map<String, Object> conditions) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
-
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-        searchSourceBuilder.fetchSource(false);
-
-        CardinalityAggregationBuilder cardinality = AggregationBuilders.cardinality("count");
-        cardinality.field("count");
-        searchSourceBuilder.aggregation(cardinality);
-
-        SearchRequest searchRequest = new SearchRequest(indexName);
-        searchRequest.types(docType);
-        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-
-        if (conditions != null) {
-            conditions.forEach((k, v) ->
-            {
-                if (v == null) {
-                    boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
-                } else {
-                    boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
-                }
-            });
-        }
-        searchSourceBuilder.query(boolQueryBuilder);
-        searchRequest.source(searchSourceBuilder);
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(docType, "docType can not be null");
+
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+            searchSourceBuilder.fetchSource(false);
+
+            CardinalityAggregationBuilder cardinality = AggregationBuilders.cardinality("count");
+            cardinality.field("count");
+            searchSourceBuilder.aggregation(cardinality);
+
+            SearchRequest searchRequest = new SearchRequest(indexName);
+            searchRequest.types(docType);
+            BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+
+            if (conditions != null) {
+                conditions.forEach((k, v) ->
+                {
+                    if (v == null) {
+                        boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
+                    } else {
+                        boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
+                    }
+                });
+            }
+            searchSourceBuilder.query(boolQueryBuilder);
+            searchRequest.source(searchSourceBuilder);
             return this.client.search(searchRequest, RequestOptions.DEFAULT).getHits().getTotalHits();
         } catch (IOException e) {
             log.error("", e);
@@ -472,9 +472,9 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public DocData getDoc(String indexName, String docType, String id, String[] returnFields) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(docType, "docType can not be null");
             GetRequest getRequest = new GetRequest(indexName);
             getRequest.type(docType);
             getRequest.id(id);
@@ -567,27 +567,27 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      * @return true:submit suss
      */
     public boolean delByQuery(String indexName, String docType, Map<String, Object> conditions) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
-        Preconditions.checkNotNull(conditions, "conditions can not be null");
-        DeleteByQueryRequest request = new DeleteByQueryRequest(indexName);
-        request.setDocTypes(docType);
-        request.setConflicts("proceed");
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-        searchSourceBuilder.fetchSource(false);
-        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-        conditions.forEach((k, v) -> {
-            if (v == null) {
-                boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
-            } else {
-                boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
-            }
-        });
-        request.setQuery(boolQueryBuilder);
-        request.setBatchSize(1000);
-        request.setRefresh(true);
-        request.setIndicesOptions(IndicesOptions.LENIENT_EXPAND_OPEN);
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(docType, "docType can not be null");
+            Preconditions.checkNotNull(conditions, "conditions can not be null");
+            DeleteByQueryRequest request = new DeleteByQueryRequest(indexName);
+            request.setDocTypes(docType);
+            request.setConflicts("proceed");
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+            searchSourceBuilder.fetchSource(false);
+            BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+            conditions.forEach((k, v) -> {
+                if (v == null) {
+                    boolQueryBuilder.mustNot(QueryBuilders.existsQuery(k));
+                } else {
+                    boolQueryBuilder.must(QueryBuilders.termQuery(k, v));
+                }
+            });
+            request.setQuery(boolQueryBuilder);
+            request.setBatchSize(1000);
+            request.setRefresh(true);
+            request.setIndicesOptions(IndicesOptions.LENIENT_EXPAND_OPEN);
             this.client.deleteByQueryAsync(request, RequestOptions.DEFAULT, new ActionListener<BulkByScrollResponse>() {
                 @Override
                 public void onResponse(BulkByScrollResponse bulkResponse) {

@@ -42,12 +42,12 @@ public class ESDataSource extends BaseESDataSource {
 
     @Override
     public List<Map<String, Object>> query(String sql) {
-        Preconditions.checkNotNull(sql, "sql can not be null");
-        JSONObject json = new JSONObject();
-        json.put("query", sql);
 
         List<Map<String, Object>> result = new ArrayList<>();
         try {
+            Preconditions.checkNotNull(sql, "sql can not be null");
+            JSONObject json = new JSONObject();
+            json.put("query", sql);
             HttpClientHandler.HandlerResponse response = this.sqlHandler.httpPostDemo(json.toString(), ContentType.APPLICATION_JSON, null);
 
             JSONObject responseJson = JSON.parseObject(response.getContent());

@@ -91,10 +91,10 @@ public class RetryBulkProcessor implements Closeable {
     }
 
     public boolean asyncUpsert(String indexName, String docType, DocData doc) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
-        Preconditions.checkNotNull(doc, "docs can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(docType, "docType can not be null");
+            Preconditions.checkNotNull(doc, "docs can not be null");
             Map<String, Object> objectMap = doc.toMap();
             UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
                     .upsert(objectMap).doc(objectMap);
@@ -177,11 +177,16 @@ public class RetryBulkProcessor implements Closeable {
      * @return true: submit suss
      */
     public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
-        Preconditions.checkNotNull(docs, "docs can not be null");
-        for (DocData doc : docs) {
-            if (!this.asyncUpsert(indexName, docType, doc)) {
-                return false;
+        try {
+            Preconditions.checkNotNull(docs, "docs can not be null");
+            for (DocData doc : docs) {
+                if (!this.asyncUpsert(indexName, docType, doc)) {
+                    return false;
+                }
             }
+        } catch (Exception e) {
+            log.error("", e);
+            return false;
         }
         return true;
     }
@@ -193,10 +198,10 @@ public class RetryBulkProcessor implements Closeable {
      * @return true:submit suss
      */
     public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
-        Preconditions.checkNotNull(indexName, "indexName can not be null");
-        Preconditions.checkNotNull(docType, "docType can not be null");
-        Preconditions.checkNotNull(docIds, "docIds can not be null");
         try {
+            Preconditions.checkNotNull(indexName, "indexName can not be null");
+            Preconditions.checkNotNull(docType, "docType can not be null");
+            Preconditions.checkNotNull(docIds, "docIds can not be null");
             for (String id : docIds) {
                 DeleteRequest request = new DeleteRequest(indexName, docType, id);
                 request.waitForActiveShards(1);
