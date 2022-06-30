@@ -21,12 +21,12 @@ public interface IESDataSource {
 
     Set<String> getAllIndex();
 
-    IndexInfo getIndexSchema(String indexName, String docType);
+    IndexInfo getIndexSchema(String indexName);
 
     @Deprecated
     boolean addNewField2Index(IndexInfo indexinf);
 
-    boolean addNewField2Index(String index, String type, Collection<FieldInfo> fieldInfos);
+    boolean addNewField2Index(String index, Collection<FieldInfo> fieldInfos);
 
     DocData getDoc(String indexName, String docType, String id, String[] fields);
 

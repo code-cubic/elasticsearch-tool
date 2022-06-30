@@ -17,12 +17,7 @@ import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest;
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest;
-import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
-import org.elasticsearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.search.SearchRequest;
@@ -30,20 +25,20 @@ import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.*;
+import org.elasticsearch.client.indices.*;
 import org.elasticsearch.cluster.health.ClusterIndexHealth;
-import org.elasticsearch.cluster.metadata.AliasMetaData;
-import org.elasticsearch.cluster.metadata.MappingMetaData;
-import org.elasticsearch.common.collect.ImmutableOpenMap;
-import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.cluster.metadata.AliasMetadata;
+import org.elasticsearch.cluster.metadata.MappingMetadata;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
-import org.elasticsearch.search.aggregations.metrics.cardinality.CardinalityAggregationBuilder;
+import org.elasticsearch.search.aggregations.metrics.CardinalityAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
+import org.elasticsearch.xcontent.XContentType;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -94,13 +89,14 @@ public class BaseESDataSource implements IESDataSource, Closeable {
                                     .setMaxConnPerRoute(this.esConf.getMaxConnectPerRoute())
                                     .setMaxConnTotal(this.esConf.getMaxConnectTotal())
             );
+            //todo: not set retry and timeout
             clientBuilder.setFailureListener(new RestClient.FailureListener() {
                 @Override
                 public void onFailure(Node node) {
                     super.onFailure(node);
                     log.error("node:{} connect failure！", node.getHost());
                 }
-            }).setMaxRetryTimeoutMillis(5 * 60 * 1000);
+            });
             this.client = new RestHighLevelClient(clientBuilder);
             log.info("init client ok!");
         } catch (Exception e) {
@@ -134,12 +130,11 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     public boolean createIndex(IndexInfo indexInf) {
         try {
             Preconditions.checkNotNull(indexInf.getName(), "indexName can not be null");
-            Preconditions.checkNotNull(indexInf.getType(), "docType can not be null");
             Preconditions.checkNotNull(indexInf.getPropInfo(), "propInfo can not be null");
 
             CreateIndexRequest request = new CreateIndexRequest(indexInf.getName());
             String indexSchemaTemplate = this.esConf.getIndexSchemaTemplate();
-            String source = indexSchemaTemplate.replaceAll("\\$docType", indexInf.getType())
+            String source = indexSchemaTemplate
                     .replaceAll("\\$properties", indexInf.prop2JsonStr());
             request.source(source, XContentType.JSON);
             this.client.indices().create(request, RequestOptions.DEFAULT);
@@ -176,9 +171,8 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     public boolean existIndex(String indexName) {
         try {
             Preconditions.checkNotNull(indexName, "indexName can not be null");
-            GetIndexRequest request = new GetIndexRequest();
+            GetIndexRequest request = new GetIndexRequest(indexName);
             request.indicesOptions(IndicesOptions.STRICT_EXPAND_OPEN);
-            request.indices(indexName);
             return this.client.indices().exists(request, RequestOptions.DEFAULT);
         } catch (IOException e) {
             log.error("", e);
@@ -221,12 +215,12 @@ public class BaseESDataSource implements IESDataSource, Closeable {
             request.indices(indexName);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
             GetAliasesResponse response = this.client.indices().getAlias(request, RequestOptions.DEFAULT);
-            Map<String, Set<AliasMetaData>> aliases = response.getAliases();
+            Map<String, Set<AliasMetadata>> aliases = response.getAliases();
             if (aliases != null) {
-                for (Map.Entry<String, Set<AliasMetaData>> entry : aliases.entrySet()) {
-                    Set<AliasMetaData> value = entry.getValue();
+                for (Map.Entry<String, Set<AliasMetadata>> entry : aliases.entrySet()) {
+                    Set<AliasMetadata> value = entry.getValue();
                     if (value != null) {
-                        for (AliasMetaData amd : value) {
+                        for (AliasMetadata amd : value) {
                             alias.add(amd.getAlias());
                         }
 
@@ -284,7 +278,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
             GetAliasesRequest request = new GetAliasesRequest();
             request.indices(indexAlias);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
-            Map<String, Set<AliasMetaData>> aliases = this.client.indices().getAlias(request, RequestOptions.DEFAULT).getAliases();
+            Map<String, Set<AliasMetadata>> aliases = this.client.indices().getAlias(request, RequestOptions.DEFAULT).getAliases();
             return aliases.keySet();
         } catch (IOException e) {
             log.error("", e);
@@ -320,55 +314,48 @@ public class BaseESDataSource implements IESDataSource, Closeable {
 
     /**
      * @param indexName
-     * @param type
      * @return
      */
     @Override
-    public IndexInfo getIndexSchema(String indexName, String type) {
+    public IndexInfo getIndexSchema(String indexName) {
         try {
             Preconditions.checkNotNull(indexName, "indexName can not be null");
             GetMappingsRequest request = new GetMappingsRequest();
             request.indices(indexName);
-            request.types(type);
             request.indicesOptions(IndicesOptions.lenientExpandOpen());
             GetMappingsResponse response = this.client.indices().getMapping(request, RequestOptions.DEFAULT);
-            ImmutableOpenMap<String, ImmutableOpenMap<String, MappingMetaData>> allMappings = response.mappings();
-            ImmutableOpenMap<String, MappingMetaData> indexMaper = allMappings.get(indexName);
-            if (indexMaper != null) {
-                MappingMetaData typeMapping = indexMaper.get(type);
-
-                if (typeMapping != null) {
-                    Map<String, Object> mapping = typeMapping.sourceAsMap();
-                    if (mapping != null && !mapping.isEmpty()) {
-                        IndexInfo indexInf = new IndexInfo();
-                        indexInf.setName(indexName);
-                        indexInf.setType(type);
-                        PropertiesInfo propertiesInfo = new PropertiesInfo();
-                        indexInf.setPropInfo(propertiesInfo);
-                        LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
-                        properties.forEach((k, v) -> {
-                            Map typeInfoMap = (Map) v;
-                            FieldInfo fieldInfo = new FieldInfo();
-                            fieldInfo.setName((String) k);
-                            fieldInfo.setType((String) typeInfoMap.get("type"));
-                            try {
-                                if ("nested".equalsIgnoreCase(fieldInfo.getType()) || "object".equalsIgnoreCase(fieldInfo.getType())) {
-                                    Map subProps = (Map) typeInfoMap.get("properties");
-                                    subProps.forEach((subK, subV) -> {
-                                        FieldInfo subField = new FieldInfo();
-                                        Map subMap = (Map) subV;
-                                        subField.setName((String) subK);
-                                        subField.setType((String) subMap.get("type"));
-                                        fieldInfo.addFields(subField);
-                                    });
-                                }
-                            } catch (Exception e) {
-                                log.error("", e);
+            Map<String, MappingMetadata> allMappings = response.mappings();
+            MappingMetadata mappingMetadata = allMappings.get(indexName);
+            if (mappingMetadata != null) {
+                Map<String, Object> mapping = mappingMetadata.sourceAsMap();
+                if (mapping != null && !mapping.isEmpty()) {
+                    IndexInfo indexInf = new IndexInfo();
+                    indexInf.setName(indexName);
+                    PropertiesInfo propertiesInfo = new PropertiesInfo();
+                    indexInf.setPropInfo(propertiesInfo);
+                    LinkedHashMap properties = (LinkedHashMap) mapping.get("properties");
+                    properties.forEach((k, v) -> {
+                        Map typeInfoMap = (Map) v;
+                        FieldInfo fieldInfo = new FieldInfo();
+                        fieldInfo.setName((String) k);
+                        fieldInfo.setType((String) typeInfoMap.get("type"));
+                        try {
+                            if ("nested".equalsIgnoreCase(fieldInfo.getType()) || "object".equalsIgnoreCase(fieldInfo.getType())) {
+                                Map subProps = (Map) typeInfoMap.get("properties");
+                                subProps.forEach((subK, subV) -> {
+                                    FieldInfo subField = new FieldInfo();
+                                    Map subMap = (Map) subV;
+                                    subField.setName((String) subK);
+                                    subField.setType((String) subMap.get("type"));
+                                    fieldInfo.addFields(subField);
+                                });
                             }
-                            propertiesInfo.addField(fieldInfo);
-                        });
-                        return indexInf;
-                    }
+                        } catch (Exception e) {
+                            log.error("", e);
+                        }
+                        propertiesInfo.addField(fieldInfo);
+                    });
+                    return indexInf;
                 }
             }
         } catch (Exception e) {
@@ -384,20 +371,18 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      */
     @Override
     public boolean addNewField2Index(IndexInfo indexinf) {
-        return this.addNewField2Index(indexinf.getName(), indexinf.getType(), indexinf.getPropInfo().getFields());
+        return this.addNewField2Index(indexinf.getName(), indexinf.getPropInfo().getFields());
     }
 
     @Override
-    public boolean addNewField2Index(String index, String type, Collection<FieldInfo> fieldInfos) {
+    public boolean addNewField2Index(String index, Collection<FieldInfo> fieldInfos) {
         try {
             Preconditions.checkNotNull(index, "indexName can not be null");
-            Preconditions.checkNotNull(type, "docType can not be null");
             Preconditions.checkNotNull(fieldInfos, "propInfo can not be null");
 
             PutMappingRequest request = new PutMappingRequest(index);
-            request.type(type);
-            request.timeout(TimeValue.timeValueMinutes(1));
-            request.masterNodeTimeout(TimeValue.timeValueMinutes(1));
+            request.setTimeout(TimeValue.timeValueMinutes(1));
+            request.setMasterTimeout(TimeValue.timeValueMinutes(1));
             Map<String, Object> properties = new HashMap<>(fieldInfos.size());
             for (FieldInfo fi : fieldInfos) {
                 Map<String, Object> message = new HashMap<>();
@@ -455,7 +440,7 @@ public class BaseESDataSource implements IESDataSource, Closeable {
             }
             searchSourceBuilder.query(boolQueryBuilder);
             searchRequest.source(searchSourceBuilder);
-            return this.client.search(searchRequest, RequestOptions.DEFAULT).getHits().getTotalHits();
+            return this.client.search(searchRequest, RequestOptions.DEFAULT).getHits().getTotalHits().value;
         } catch (IOException e) {
             log.error("", e);
         }

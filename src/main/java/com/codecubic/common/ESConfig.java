@@ -30,6 +30,8 @@ public class ESConfig implements Serializable {
     private String indexSchemaTemplate;
     private Integer reqWriteWaitMill = 1000;
 
+    private String indexSchemaDemo;
+
     public void setParallel(Integer parallel) throws ConfigErrExcp {
         this.parallel = parallel;
         if (this.parallel < 2) {

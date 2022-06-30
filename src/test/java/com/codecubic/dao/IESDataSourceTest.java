@@ -19,14 +19,15 @@ class IESDataSourceTest {
     private static IESDataSource esServ;
     private static IESDataSource esSqlServ;
     private static final int WAIT_FLUSH_SEC = 2;
-    private static final String INDEX_NAME = "index_20201101";
+    private static final String INDEX_NAME = "index_202201";
+    private static final ESConfig ES_CONFIG;
 
     static {
         Yaml yaml = new Yaml();
-        ESConfig esConfig = yaml.loadAs(IESDataSource.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
+        ES_CONFIG = yaml.loadAs(IESDataSource.class.getClassLoader().getResourceAsStream("application.yml"), ESConfig.class);
         try {
-            esServ = new BaseESDataSource(esConfig);
-            esSqlServ = new ESDataSource(esConfig);
+            esServ = new BaseESDataSource(ES_CONFIG);
+            esSqlServ = new ESDataSource(ES_CONFIG);
         } catch (ESCliInitExcep e) {
             e.printStackTrace();
         }
@@ -34,17 +35,24 @@ class IESDataSourceTest {
 
     @Order(0)
     @Test
-    void existIndex() {
+    void createIndex02() {
         esServ.deleIndex(INDEX_NAME);
-        Assertions.assertFalse(esServ.existIndex(INDEX_NAME));
+        Assertions.assertTrue(esServ.createIndex(INDEX_NAME, ES_CONFIG.getIndexSchemaDemo()));
+        IndexInfo indexSchema = esServ.getIndexSchema(INDEX_NAME);
+        List<FieldInfo> fields = indexSchema.getPropInfo().getFields();
+        boolean pts = fields.stream().allMatch(e -> e.getName().equals("title")
+                || e.getName().equals("labs")
+                || e.getName().equals("content")
+        );
+        Assertions.assertTrue(pts);
     }
 
     @Order(1)
     @Test
     void createIndex() {
+        esServ.deleIndex(INDEX_NAME);
         IndexInfo indexInf = new IndexInfo();
         indexInf.setName(INDEX_NAME);
-        indexInf.setType("_doc");
         PropertiesInfo prop = new PropertiesInfo();
         indexInf.setPropInfo(prop);
         prop.addField("cid", "keyword");
@@ -58,6 +66,7 @@ class IESDataSourceTest {
         Assertions.assertTrue(esServ.createIndex(indexInf));
     }
 
+
     @Order(2)
     @Test
     void getAllIndex() {
@@ -66,18 +75,17 @@ class IESDataSourceTest {
         allIndex.forEach(index -> System.out.println(index));
     }
 
-    @Order(2)
+    @Order(3)
     @Test
     void existIndex02() {
         Assertions.assertTrue(esServ.existIndex(INDEX_NAME));
     }
 
-    @Order(2)
+    @Order(3)
     @Test
     void addNewField2Index() {
         IndexInfo indexInf = new IndexInfo();
         indexInf.setName(INDEX_NAME);
-        indexInf.setType("_doc");
         PropertiesInfo prop = new PropertiesInfo();
         indexInf.setPropInfo(prop);
         prop.addField("load_bal", "double");
@@ -88,12 +96,11 @@ class IESDataSourceTest {
         Assertions.assertTrue(esServ.addNewField2Index(indexInf));
     }
 
-    @Order(3)
+    @Order(4)
     @Test
     void getIndexSchema() {
-        IndexInfo indexInfo = esServ.getIndexSchema(INDEX_NAME, "_doc");
+        IndexInfo indexInfo = esServ.getIndexSchema(INDEX_NAME);
         Assertions.assertEquals(INDEX_NAME, indexInfo.getName());
-        Assertions.assertEquals("_doc", indexInfo.getType());
         ArrayList<String> names = new ArrayList<>();
         names.add("cid");
         names.add("age");
@@ -120,15 +127,14 @@ class IESDataSourceTest {
         });
     }
 
-    @Order(3)
+    @Order(4)
     @Test
     void getIndexSchema02() {
-        IndexInfo indexInfo = esServ.getIndexSchema(INDEX_NAME, "_doc");
+        IndexInfo indexInfo = esServ.getIndexSchema(INDEX_NAME);
         Assertions.assertEquals(INDEX_NAME, indexInfo.getName());
-        Assertions.assertEquals("_doc", indexInfo.getType());
     }
 
-    @Order(4)
+    @Order(5)
     @Test
     void asyncUpsert() throws IOException {
         DocData doc = new DocData();
@@ -139,7 +145,7 @@ class IESDataSourceTest {
         esServ.flush();
     }
 
-    @Order(4)
+    @Order(5)
     @Test
     void asyncBulkUpsert2() {
         ArrayList<DocData> docDatas = new ArrayList<>();
@@ -168,7 +174,7 @@ class IESDataSourceTest {
         esServ.flush();
     }
 
-    @Order(5)
+    @Order(10)
     @Test
     void asyncBulkUpsert3() {
         ArrayList<DocData> docDatas = new ArrayList<>();
@@ -183,7 +189,7 @@ class IESDataSourceTest {
         esServ.flush();
     }
 
-    @Order(6)
+    @Order(20)
     @Test
     void asyncBulkUpsert4() throws IOException {
         DocData doc = new DocData();
@@ -195,7 +201,7 @@ class IESDataSourceTest {
         esServ.flush();
     }
 
-    @Order(10)
+    @Order(30)
     @Test
     void getDoc() {
         DocData doc = esServ.getDoc(INDEX_NAME, "_doc", "100000001", new String[]{"age", "bal", "load_bal", "nested_test.prd", "nested_test.bal"});
@@ -206,7 +212,7 @@ class IESDataSourceTest {
 
     }
 
-    @Order(11)
+    @Order(40)
     @Test
     void getDoc2() {
         DocData doc = esServ.getDoc(INDEX_NAME, "_doc", "100000001", null);
@@ -217,7 +223,7 @@ class IESDataSourceTest {
         Assertions.assertEquals("姓名", doc.getValStr("name"));
     }
 
-    @Order(12)
+    @Order(50)
     @Test
     void getDoc3() {
         DocData doc = esServ.getDoc(INDEX_NAME, "_doc", "100000002", new String[]{"age", "bal", "load_bal", "nested_test", "nested_test2"});
@@ -226,14 +232,14 @@ class IESDataSourceTest {
 
     }
 
-    @Order(20)
+    @Order(60)
     @Test
     void count() {
         esServ.flush();
         Assertions.assertEquals(20, esServ.count(INDEX_NAME, "_doc", null));
     }
 
-    @Order(21)
+    @Order(70)
     @Test
     void count02() {
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -242,7 +248,7 @@ class IESDataSourceTest {
         Assertions.assertEquals(1, esServ.count(INDEX_NAME, "_doc", paramMap));
     }
 
-    @Order(21)
+    @Order(80)
     @Test
     void count03() {
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -250,7 +256,7 @@ class IESDataSourceTest {
         Assertions.assertEquals(1, esServ.count(INDEX_NAME, "_doc", paramMap));
     }
 
-    @Order(21)
+    @Order(81)
     @Test
     void count04() {
         HashMap<String, Object> paramMap = new HashMap<>();
@@ -258,11 +264,11 @@ class IESDataSourceTest {
         Assertions.assertEquals(1, esServ.count(INDEX_NAME, "_doc", paramMap));
     }
 
-    @Order(25)
+    @Order(90)
     @Test
     void query() {
         esServ.flush();
-        String sql = "select age,count(1) as ct from index_20201101 where age = 20 group by age";
+        String sql = String.format("select age,count(1) as ct from %s where age = 20 group by age", INDEX_NAME);
         List<Map<String, Object>> list = esSqlServ.query(sql);
         Assertions.assertNotNull(list);
         Assertions.assertTrue(list.size() > 0);
@@ -273,7 +279,7 @@ class IESDataSourceTest {
         });
     }
 
-    @Order(30)
+    @Order(100)
     @Test
     void delByQuery() {
         Assertions.assertEquals("100000001", esServ.getDoc(INDEX_NAME, "_doc", "100000001", null).getId());
@@ -286,7 +292,7 @@ class IESDataSourceTest {
         Assertions.assertNull(doc.getId());
     }
 
-    @Order(35)
+    @Order(110)
     @Test
     void updatIndxAlias() {
         ArrayList<String> alias = new ArrayList<>();
@@ -295,14 +301,14 @@ class IESDataSourceTest {
         Assertions.assertTrue(esServ.updatIndxAlias(INDEX_NAME, alias, null));
     }
 
-    @Order(36)
+    @Order(120)
     @Test
     void getAliasByIndex() {
         Set<String> alias = esServ.getAliasByIndex(INDEX_NAME);
         alias.forEach(a -> Assertions.assertTrue(a.equals("index_a") || a.equals("index_b")));
     }
 
-    @Order(37)
+    @Order(130)
     @Test
     void updatIndxAlias02() {
         ArrayList<String> alias = new ArrayList<>();
@@ -311,7 +317,7 @@ class IESDataSourceTest {
         esServ.getAliasByIndex(INDEX_NAME).forEach(a -> Assertions.assertTrue(a.equals("index_b")));
     }
 
-    @Order(38)
+    @Order(140)
     @Test
     void getIndexsByAlias() {
         Set<String> indexs = esServ.getIndexsByAlias("index_b");
@@ -320,25 +326,27 @@ class IESDataSourceTest {
         indexs.forEach(e -> Assertions.assertEquals(INDEX_NAME, e));
     }
 
-    @Order(38)
+    @Order(141)
     @Test
     void existAlias() {
         Assertions.assertTrue(esServ.existAlias(INDEX_NAME, "index_b"));
     }
 
-    @Order(39)
+    @Order(150)
     @Test
     void asyBulkDelDoc() {
-        Assertions.assertEquals(2, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+        Assertions.assertEquals(2, esSqlServ
+                .query(String.format("select count(1) as ct from %s where cid in ('100000002','100000003')", INDEX_NAME)).get(0).get("ct"));
         esSqlServ.asyBulkDelDoc(INDEX_NAME, "_doc", new ArrayList() {{
             add("100000002");
             add("100000003");
         }});
         esSqlServ.flush();
-        Assertions.assertEquals(0, esSqlServ.query("select count(1) as ct from index_20201101 where cid in ('100000002','100000003')").get(0).get("ct"));
+        Assertions.assertEquals(0,
+                esSqlServ.query(String.format("select count(1) as ct from %s where cid in ('100000002','100000003')", INDEX_NAME)).get(0).get("ct"));
     }
 
-    @Order(50)
+    @Order(160)
     @Test
     void asyncBulkUpsert5() {
         ArrayList<DocData> docDatas = new ArrayList<>();
@@ -365,7 +373,8 @@ class IESDataSourceTest {
         }
         esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
         esServ.flush();
-        Assertions.assertEquals(20000, esSqlServ.query("select count(1) as ct from index_20201101 where cid  > 200000000").get(0).get("ct"));
+        Assertions.assertEquals(20000,
+                esSqlServ.query(String.format("select count(1) as ct from %s where cid  > 200000000", INDEX_NAME)).get(0).get("ct"));
     }
 
     @Order(998)
