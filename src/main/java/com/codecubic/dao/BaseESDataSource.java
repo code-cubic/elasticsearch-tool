@@ -522,15 +522,15 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     }
 
     @Override
-    public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
+    public boolean asyncBulkUpsert(String indexName, List<DocData> docs) {
         loadBulkProcessor();
-        return this.retryBulkProcessor.asyncBulkUpsert(indexName, docType, docs);
+        return this.retryBulkProcessor.asyncBulkUpsert(indexName, docs);
     }
 
     @Override
-    public boolean asyncUpsert(String indexName, String docType, DocData doc) {
+    public boolean asyncUpsert(String indexName, DocData doc) {
         loadBulkProcessor();
-        return this.retryBulkProcessor.asyncUpsert(indexName, docType, doc);
+        return this.retryBulkProcessor.asyncUpsert(indexName, doc);
     }
 
 

@@ -170,7 +170,8 @@ class IESDataSourceTest {
             doc.addField(new FieldData("nested_test", nestedTestVals));
             docDatas.add(doc);
         }
-        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+//        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+        esServ.asyncBulkUpsert(INDEX_NAME, docDatas);
         esServ.flush();
     }
 
@@ -185,7 +186,8 @@ class IESDataSourceTest {
         doc.addField(new FieldData("bal", 20d));
         doc.addField(new FieldData("name", "姓名"));
         docDatas.add(doc);
-        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+//        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+        esServ.asyncBulkUpsert(INDEX_NAME, docDatas);
         esServ.flush();
     }
 
@@ -371,7 +373,8 @@ class IESDataSourceTest {
             doc.addField(new FieldData("nested_test", nestedTestVals));
             docDatas.add(doc);
         }
-        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+//        esServ.asyncBulkUpsert(INDEX_NAME, "_doc", docDatas);
+        esServ.asyncBulkUpsert(INDEX_NAME, docDatas);
         esServ.flush();
         Assertions.assertEquals(20000,
                 esSqlServ.query(String.format("select count(1) as ct from %s where cid  > 200000000", INDEX_NAME)).get(0).get("ct"));

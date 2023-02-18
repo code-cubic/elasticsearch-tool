@@ -25,7 +25,8 @@ public class WriteTst {
             doc.addField(new FieldData("etl_dt", "20210715"));
             doc.addField(new FieldData("customer_id", "cid_" + i));
             doc.setId("cid_" + i);
-            esServ.asyncUpsert("test_tp_08", "_doc", doc);
+//            esServ.asyncUpsert("test_tp_08", "_doc", doc);
+            esServ.asyncUpsert("test_tp_08", doc);
         }
         esServ.flush();
         esServ.close();

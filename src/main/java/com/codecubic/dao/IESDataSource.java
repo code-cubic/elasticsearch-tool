@@ -46,9 +46,9 @@ public interface IESDataSource {
 
     boolean updatIndxAlias(String indexName, Collection<String> newAlias, Collection<String> delAlias);
 
-    boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs);
+    boolean asyncBulkUpsert(String indexName, List<DocData> docs);
 
-    boolean asyncUpsert(String indexName, String docType, DocData doc);
+    boolean asyncUpsert(String indexName, DocData doc);
 
     boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
 

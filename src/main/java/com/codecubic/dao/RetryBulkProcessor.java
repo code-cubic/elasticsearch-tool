@@ -90,13 +90,12 @@ public class RetryBulkProcessor implements Closeable {
         }
     }
 
-    public boolean asyncUpsert(String indexName, String docType, DocData doc) {
+    public boolean asyncUpsert(String indexName, DocData doc) {
         try {
             Preconditions.checkNotNull(indexName, "indexName can not be null");
-            Preconditions.checkNotNull(docType, "docType can not be null");
             Preconditions.checkNotNull(doc, "docs can not be null");
             Map<String, Object> objectMap = doc.toMap();
-            UpdateRequest request = new UpdateRequest(indexName, docType, doc.getId())
+            UpdateRequest request = new UpdateRequest(indexName, doc.getId())
                     .upsert(objectMap).doc(objectMap);
             request.retryOnConflict(10);
             request.waitForActiveShards(1);
@@ -176,11 +175,11 @@ public class RetryBulkProcessor implements Closeable {
      * @param docs
      * @return true: submit suss
      */
-    public boolean asyncBulkUpsert(String indexName, String docType, List<DocData> docs) {
+    public boolean asyncBulkUpsert(String indexName, List<DocData> docs) {
         try {
             Preconditions.checkNotNull(docs, "docs can not be null");
             for (DocData doc : docs) {
-                if (!this.asyncUpsert(indexName, docType, doc)) {
+                if (!this.asyncUpsert(indexName, doc)) {
                     return false;
                 }
             }
@@ -217,7 +216,7 @@ public class RetryBulkProcessor implements Closeable {
     }
 
     private void retryWrite() {
-        log.info("lazyQueue.size:{}", this.lazyQueue.size());
+        printLazyQueSize();
         int i = 0;
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext() && i < 200) {
@@ -225,17 +224,23 @@ public class RetryBulkProcessor implements Closeable {
             this.lazyQueue.remove(0);
             i++;
         }
-        log.info("lazyQueue.size:{}", this.lazyQueue.size());
+        printLazyQueSize();
     }
 
     private void retryWriteAll() {
-        log.info("lazyQueue.size:{}", this.lazyQueue.size());
+        printLazyQueSize();
         Iterator<DocWriteRequest> item = lazyQueue.iterator();
         while (item.hasNext()) {
             this.addReq(this.lazyQueue.get(0), false);
             this.lazyQueue.remove(0);
         }
-        log.info("lazyQueue.size:{}", this.lazyQueue.size());
+        printLazyQueSize();
+    }
+
+    private void printLazyQueSize() {
+        if (this.lazyQueue.size() > 0) {
+            log.info("lazyQueue.size:{}", this.lazyQueue.size());
+        }
     }
 
 
