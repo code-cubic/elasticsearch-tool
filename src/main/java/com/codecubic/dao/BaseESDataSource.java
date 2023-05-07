@@ -8,6 +8,7 @@ import com.codecubic.util.TimeUtil;
 import com.codecubic.util.Utils;
 import com.google.common.base.Preconditions;
 import lombok.Getter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
@@ -56,13 +57,15 @@ public class BaseESDataSource implements IESDataSource, Closeable {
     protected RestHighLevelClient client;
     protected RetryBulkProcessor retryBulkProcessor;
 
+    protected volatile boolean active = false;
+
 
     public BaseESDataSource(ESConfig config) throws ESCliInitExcep {
         this.esConf = config;
         initClient();
     }
 
-    protected synchronized void initClient() throws ESCliInitExcep {
+    protected synchronized void initClient() {
 
         Utils.close(this::getClient);
 
@@ -99,12 +102,29 @@ public class BaseESDataSource implements IESDataSource, Closeable {
             });
             this.client = new RestHighLevelClient(clientBuilder);
             log.info("init client ok!");
+            active = true;
         } catch (Exception e) {
             log.error("", e);
-            throw new ESCliInitExcep(e);
+            active = false;
+            log.error("es client init error! active is false");
+            new Thread(new ReinitTh(this)).start();
         }
     }
 
+    private static class ReinitTh implements Runnable {
+        BaseESDataSource obj;
+
+        public ReinitTh(BaseESDataSource obj) {
+            this.obj = obj;
+        }
+
+        @SneakyThrows
+        @Override
+        public void run() {
+            Thread.sleep(10000);
+            obj.initClient();
+        }
+    }
 
     /**
      * @param indexName
@@ -540,9 +560,15 @@ public class BaseESDataSource implements IESDataSource, Closeable {
      * @param docIds
      * @return true:submit suss
      */
+    @Deprecated
     public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
         loadBulkProcessor();
         return this.retryBulkProcessor.asyBulkDelDoc(indexName, docType, docIds);
+    }
+
+    public boolean asyBulkDelDoc(String indexName, Collection<String> docIds) {
+        loadBulkProcessor();
+        return this.retryBulkProcessor.asyBulkDelDoc(indexName, docIds);
     }
 
     /**

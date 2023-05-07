@@ -171,7 +171,6 @@ public class RetryBulkProcessor implements Closeable {
 
     /**
      * @param indexName
-     * @param docType
      * @param docs
      * @return true: submit suss
      */
@@ -197,12 +196,16 @@ public class RetryBulkProcessor implements Closeable {
      * @return true:submit suss
      */
     public boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds) {
+        return asyBulkDelDoc(indexName, docIds);
+    }
+
+    public boolean asyBulkDelDoc(String indexName, Collection<String> docIds) {
         try {
             Preconditions.checkNotNull(indexName, "indexName can not be null");
-            Preconditions.checkNotNull(docType, "docType can not be null");
             Preconditions.checkNotNull(docIds, "docIds can not be null");
             for (String id : docIds) {
-                DeleteRequest request = new DeleteRequest(indexName, docType, id);
+//                DeleteRequest request = new DeleteRequest(indexName, docType, id);
+                DeleteRequest request = new DeleteRequest(indexName, id);
                 request.waitForActiveShards(1);
                 this.addReq(request, true);
             }

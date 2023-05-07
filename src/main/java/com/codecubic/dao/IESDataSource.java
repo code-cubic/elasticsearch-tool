@@ -50,7 +50,9 @@ public interface IESDataSource {
 
     boolean asyncUpsert(String indexName, DocData doc);
 
+    @Deprecated
     boolean asyBulkDelDoc(String indexName, String docType, Collection<String> docIds);
+    boolean asyBulkDelDoc(String indexName, Collection<String> docIds);
 
     void upsrt(String indexName, String docType, DocData doc) throws IOException;
 
